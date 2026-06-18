@@ -465,75 +465,110 @@
     statusText.textContent = text;
   }
 
-  // ── Conversion ──
-  convertBtn.addEventListener('click', async () => {
+  // ── Conversion (avec progression upload + conversion) ──
+  convertBtn.addEventListener('click', () => {
     if (!selectedFile) return;
 
     convertBtn.disabled = true;
     downloadBtn.classList.remove('visible');
+    statusMsg.classList.remove('visible', 'success', 'error', 'info');
     progressSec.classList.add('visible');
     progressFil.style.width = '0%';
     progressPct.textContent = '0%';
-    progressLbl.textContent = 'Envoi du fichier…';
-    showStatus('info',
-      '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>',
-      'Traitement en cours, patiente un moment…'
-    );
+    progressLbl.textContent = 'Envoi du fichier… 0%';
 
     const formData = new FormData();
     formData.append('file', selectedFile);
 
-    let jobId;
-    try {
-      const res = await fetch('/convert', { method: 'POST', body: formData });
-      const data = await res.json();
-      if (!res.ok || data.error) throw new Error(data.error || 'Erreur inconnue');
-      jobId = data.job_id;
-    } catch (e) {
-      showStatus('error', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>', 'Erreur lors de l\'envoi : ' + e.message);
-      convertBtn.disabled = false;
-      return;
-    }
+    const xhr = new XMLHttpRequest();
 
-    // ── Polling progression ──
-    pollInterval = setInterval(async () => {
-      try {
-        const res  = await fetch(`/progress/${jobId}`);
-        const data = await res.json();
-
-        const pct = data.progress || 0;
+    // ── Suivi progression upload ──
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) {
+        const pct = Math.round((e.loaded / e.total) * 100);
         progressFil.style.width = pct + '%';
         progressPct.textContent = pct + '%';
-
-        const labels = {
-          loading:    'Chargement du fichier audio…',
-          processing: 'Application de l\'effet 8D…',
-          saving:     'Finalisation et export…',
-          done:       'Terminé !',
-          error:      'Erreur',
-        };
-        progressLbl.textContent = labels[data.status] || 'Traitement…';
-
-        if (data.status === 'done') {
-          clearInterval(pollInterval);
-          showStatus('success', '<polyline stroke-linecap="round" stroke-linejoin="round" stroke-width="2" points="20 6 9 17 4 12"/>', 'Conversion réussie ! Ton fichier 8D est prêt.');
-          downloadBtn.href = `/download/${jobId}`;
-          downloadBtn.classList.add('visible');
-          convertBtn.disabled = false;
-        }
-
-        if (data.status === 'error') {
-          clearInterval(pollInterval);
-          showStatus('error', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>', 'Erreur : ' + (data.error || 'inconnue'));
-          convertBtn.disabled = false;
-        }
-
-      } catch (e) {
-        clearInterval(pollInterval);
-        showStatus('error', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>', 'Impossible de joindre le serveur.');
-        convertBtn.disabled = false;
+        progressLbl.textContent = 'Envoi du fichier… ' + pct + '%';
       }
-    }, 800);
+    };
+
+    // ── Upload terminé → on démarre le polling conversion ──
+    xhr.onload = () => {
+      if (xhr.status !== 200) {
+        let msg = 'Erreur lors de l\'envoi';
+        try {
+          const d = JSON.parse(xhr.responseText);
+          if (d.error) msg = d.error;
+        } catch (_) {}
+        showStatus('error', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>', msg);
+        convertBtn.disabled = false;
+        return;
+      }
+
+      let jobId;
+      try {
+        const data = JSON.parse(xhr.responseText);
+        jobId = data.job_id;
+      } catch (_) {
+        showStatus('error', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>', 'Réponse invalide du serveur.');
+        convertBtn.disabled = false;
+        return;
+      }
+
+      // Upload terminé à 100%
+      progressFil.style.width = '100%';
+      progressPct.textContent = '100%';
+      progressLbl.textContent = 'Fichier envoyé ! Début de la conversion…';
+
+      // ── Polling progression conversion ──
+      pollInterval = setInterval(async () => {
+        try {
+          const res  = await fetch(`/progress/${jobId}`);
+          const data = await res.json();
+
+          const pct = data.progress || 0;
+          progressFil.style.width = pct + '%';
+          progressPct.textContent = pct + '%';
+
+          const labels = {
+            loading:    'Chargement du fichier audio…',
+            processing: 'Application de l\'effet 8D…',
+            saving:     'Finalisation et export…',
+            done:       'Terminé !',
+            error:      'Erreur',
+          };
+          progressLbl.textContent = labels[data.status] || 'Traitement…';
+
+          if (data.status === 'done') {
+            clearInterval(pollInterval);
+            showStatus('success', '<polyline stroke-linecap="round" stroke-linejoin="round" stroke-width="2" points="20 6 9 17 4 12"/>', 'Conversion réussie ! Ton fichier 8D est prêt.');
+            downloadBtn.href = `/download/${jobId}`;
+            downloadBtn.classList.add('visible');
+            convertBtn.disabled = false;
+          }
+
+          if (data.status === 'error') {
+            clearInterval(pollInterval);
+            showStatus('error', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>', 'Erreur : ' + (data.error || 'inconnue'));
+            convertBtn.disabled = false;
+          }
+
+        } catch (e) {
+          clearInterval(pollInterval);
+          showStatus('error', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>', 'Impossible de joindre le serveur.');
+          convertBtn.disabled = false;
+        }
+      }, 800);
+    };
+
+    // ── Erreur réseau ──
+    xhr.onerror = () => {
+      showStatus('error', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>', 'Erreur réseau. Vérifie ta connexion.');
+      convertBtn.disabled = false;
+    };
+
+    xhr.open('POST', '/convert');
+    xhr.send(formData);
   });
 </script>
 </body>

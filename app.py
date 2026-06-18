@@ -104,6 +104,32 @@ except ImportError:
                 return struct.unpack_from("<h", data, index * 2)[0]
             return 0
 
+        @staticmethod
+        def add(data1, data2, width):
+            if width == 2:
+                count = min(len(data1), len(data2)) // 2
+                samples1 = struct.unpack(f"<{count}h", data1[:count*2])
+                samples2 = struct.unpack(f"<{count}h", data2[:count*2])
+                samples = [max(-32768, min(32767, s1 + s2)) for s1, s2 in zip(samples1, samples2)]
+                return struct.pack(f"<{count}h", *samples)
+            return data1
+
+        @staticmethod
+        def minmax(data, width):
+            if width == 2:
+                count = len(data) // 2
+                samples = struct.unpack(f"<{count}h", data)
+                return (min(samples), max(samples))
+            return (0, 0)
+
+        @staticmethod
+        def findfactor(data, reference):
+            return 1.0
+
+        @staticmethod
+        def findmax(data, length):
+            return 0
+
     audioop = _audioop()
     sys.modules['audioop'] = audioop
 

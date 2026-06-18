@@ -7,356 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Inter:wght@400;500&display=swap" rel="stylesheet">
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-    :root {
-      --bg:        #1A1A2E;
-      --surface:   #24243E;
-      --border:    #3A3A5C;
-      --beige:     #E8D5B7;
-      --gold:      #C9A96E;
-      --gold-dim:  #9A7A4A;
-      --text-muted:#8A8AAA;
-      --green:     #6EBF8B;
-      --red:       #BF6E6E;
-    }
-
-    html, body {
-      height: 100%;
-      background: var(--bg);
-      color: var(--beige);
-      font-family: 'Inter', sans-serif;
-      overflow-x: hidden;
-    }
-
-    /* ── Orbes de fond ── */
-    .bg-orbs {
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
-      z-index: 0;
-      overflow: hidden;
-    }
-    .orb {
-      position: absolute;
-      border-radius: 50%;
-      filter: blur(80px);
-      opacity: 0.18;
-    }
-    .orb-1 {
-      width: 520px; height: 520px;
-      background: radial-gradient(circle, #C9A96E, transparent 70%);
-      top: -120px; left: -120px;
-      animation: drift1 18s ease-in-out infinite alternate;
-    }
-    .orb-2 {
-      width: 400px; height: 400px;
-      background: radial-gradient(circle, #6E8EBF, transparent 70%);
-      bottom: -100px; right: -80px;
-      animation: drift2 22s ease-in-out infinite alternate;
-    }
-    @keyframes drift1 { from { transform: translate(0,0); } to { transform: translate(60px, 40px); } }
-    @keyframes drift2 { from { transform: translate(0,0); } to { transform: translate(-50px, -30px); } }
-
-    /* ── Layout ── */
-    .page {
-      position: relative;
-      z-index: 1;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 48px 16px;
-    }
-
-    /* ── Header ── */
-    header {
-      text-align: center;
-      margin-bottom: 48px;
-    }
-
-    .logo-ring {
-      display: inline-block;
-      position: relative;
-      width: 72px;
-      height: 72px;
-      margin-bottom: 20px;
-    }
-    .ring {
-      position: absolute;
-      inset: 0;
-      border-radius: 50%;
-      border: 2px solid transparent;
-    }
-    .ring-outer {
-      border-color: var(--gold);
-      animation: spin-cw 8s linear infinite;
-    }
-    .ring-inner {
-      inset: 12px;
-      border-color: var(--beige);
-      opacity: 0.5;
-      animation: spin-ccw 5s linear infinite;
-    }
-    .ring-dot {
-      position: absolute;
-      inset: 28px;
-      background: var(--gold);
-      border-radius: 50%;
-      opacity: 0.9;
-    }
-    @keyframes spin-cw  { from { transform: rotate(0deg); }   to { transform: rotate(360deg); } }
-    @keyframes spin-ccw { from { transform: rotate(0deg); }   to { transform: rotate(-360deg); } }
-
-    h1 {
-      font-family: 'Syne', sans-serif;
-      font-size: clamp(2rem, 5vw, 3rem);
-      font-weight: 800;
-      letter-spacing: -0.02em;
-      color: var(--beige);
-      line-height: 1.1;
-    }
-    h1 span { color: var(--gold); }
-
-    .subtitle {
-      margin-top: 10px;
-      font-size: 0.95rem;
-      color: var(--text-muted);
-      font-weight: 400;
-    }
-
-    /* ── Card ── */
-    .card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 20px;
-      width: 100%;
-      max-width: 560px;
-      padding: 36px;
-    }
-
-    /* ── Drop zone ── */
-    .dropzone {
-      border: 2px dashed var(--border);
-      border-radius: 14px;
-      padding: 40px 24px;
-      text-align: center;
-      cursor: pointer;
-      transition: border-color 0.2s, background 0.2s;
-      position: relative;
-    }
-    .dropzone:hover, .dropzone.dragging {
-      border-color: var(--gold);
-      background: rgba(201,169,110,0.05);
-    }
-    .dropzone input {
-      position: absolute;
-      inset: 0;
-      opacity: 0;
-      cursor: pointer;
-      width: 100%;
-      height: 100%;
-    }
-
-    .dz-icon {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 52px; height: 52px;
-      border-radius: 14px;
-      background: rgba(201,169,110,0.12);
-      margin-bottom: 14px;
-    }
-    .dz-icon svg { width: 26px; height: 26px; stroke: var(--gold); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-
-    .dz-label {
-      font-family: 'Syne', sans-serif;
-      font-size: 0.95rem;
-      font-weight: 600;
-      color: var(--beige);
-      margin-bottom: 4px;
-    }
-    .dz-hint {
-      font-size: 0.78rem;
-      color: var(--text-muted);
-    }
-    .dz-formats {
-      font-size: 0.72rem;
-      color: var(--gold-dim);
-      margin-top: 8px;
-      letter-spacing: 0.04em;
-    }
-
-    /* ── File list ── */
-    .file-list {
-      display: none;
-      flex-direction: column;
-      gap: 8px;
-      margin-top: 16px;
-      max-height: 200px;
-      overflow-y: auto;
-    }
-    .file-list.visible { display: flex; }
-
-    .file-item {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      background: rgba(201,169,110,0.07);
-      border: 1px solid rgba(201,169,110,0.2);
-      border-radius: 10px;
-      padding: 10px 12px;
-    }
-    .fi-icon-small {
-      width: 28px; height: 28px; flex-shrink: 0;
-      background: rgba(201,169,110,0.15); border-radius: 6px;
-      display: flex; align-items: center; justify-content: center;
-    }
-    .fi-icon-small svg { width: 14px; height: 14px; stroke: var(--gold); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-    .fi-name { font-size: 0.82rem; color: var(--beige); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
-    .fi-size { font-size: 0.72rem; color: var(--text-muted); flex-shrink: 0; }
-    .fi-remove {
-      background: none; border: none; cursor: pointer;
-      color: var(--text-muted); font-size: 1rem; line-height: 1;
-      padding: 2px 4px; border-radius: 4px; transition: color 0.15s;
-    }
-    .fi-remove:hover { color: var(--red); }
-
-    .file-count {
-      font-size: 0.78rem;
-      color: var(--gold-dim);
-      margin-top: 8px;
-      text-align: center;
-    }
-
-    /* ── Button ── */
-    .btn-convert {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 10px;
-      width: 100%;
-      margin-top: 20px;
-      padding: 16px;
-      border: none;
-      border-radius: 12px;
-      background: linear-gradient(135deg, var(--gold) 0%, #A8803A 100%);
-      color: #1A1A2E;
-      font-family: 'Syne', sans-serif;
-      font-size: 1rem;
-      font-weight: 700;
-      cursor: pointer;
-      transition: opacity 0.2s, transform 0.15s;
-      letter-spacing: 0.02em;
-    }
-    .btn-convert:disabled { opacity: 0.35; cursor: not-allowed; transform: none !important; }
-    .btn-convert:not(:disabled):hover { opacity: 0.9; transform: translateY(-1px); }
-    .btn-convert svg { width: 18px; height: 18px; stroke: #1A1A2E; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
-
-    /* ── Progress ── */
-    .progress-section {
-      display: none;
-      margin-top: 20px;
-    }
-    .progress-section.visible { display: block; }
-
-    .progress-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 8px;
-    }
-    .progress-label { font-size: 0.82rem; color: var(--text-muted); }
-    .progress-pct {
-      font-family: 'Syne', sans-serif;
-      font-size: 0.82rem;
-      font-weight: 700;
-      color: var(--gold);
-    }
-
-    .progress-track {
-      height: 6px;
-      background: var(--border);
-      border-radius: 99px;
-      overflow: hidden;
-    }
-    .progress-fill {
-      height: 100%;
-      background: linear-gradient(90deg, var(--gold) 0%, #E8D5B7 100%);
-      border-radius: 99px;
-      width: 0%;
-      transition: width 0.3s ease;
-    }
-
-    .progress-sub {
-      font-size: 0.75rem;
-      color: var(--text-muted);
-      margin-top: 6px;
-      text-align: center;
-    }
-
-    /* ── Status messages ── */
-    .status-msg {
-      display: none;
-      align-items: center;
-      gap: 10px;
-      margin-top: 16px;
-      padding: 12px 16px;
-      border-radius: 10px;
-      font-size: 0.85rem;
-      font-weight: 500;
-    }
-    .status-msg.visible { display: flex; }
-    .status-msg.success { background: rgba(110,191,139,0.12); border: 1px solid rgba(110,191,139,0.3); color: var(--green); }
-    .status-msg.error   { background: rgba(191,110,110,0.12); border: 1px solid rgba(191,110,110,0.3); color: var(--red); }
-    .status-msg.info    { background: rgba(201,169,110,0.10); border: 1px solid rgba(201,169,110,0.2); color: var(--gold); }
-    .status-msg svg { flex-shrink: 0; width: 16px; height: 16px; }
-
-    /* ── Download btn ── */
-    .btn-download {
-      display: none;
-      align-items: center;
-      justify-content: center;
-      gap: 10px;
-      width: 100%;
-      margin-top: 12px;
-      padding: 14px;
-      border: 1.5px solid var(--green);
-      border-radius: 12px;
-      background: rgba(110,191,139,0.08);
-      color: var(--green);
-      font-family: 'Syne', sans-serif;
-      font-size: 0.95rem;
-      font-weight: 700;
-      cursor: pointer;
-      text-decoration: none;
-      transition: background 0.2s, transform 0.15s;
-      letter-spacing: 0.02em;
-    }
-    .btn-download.visible { display: flex; }
-    .btn-download:hover { background: rgba(110,191,139,0.15); transform: translateY(-1px); }
-    .btn-download svg { width: 16px; height: 16px; stroke: var(--green); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-
-    /* ── Footer ── */
-    footer {
-      margin-top: 36px;
-      font-size: 0.75rem;
-      color: var(--text-muted);
-      text-align: center;
-      opacity: 0.6;
-    }
-
-    /* ── Responsive ── */
-    @media (max-width: 560px) {
-      .card { padding: 24px 20px; }
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      .ring-outer, .ring-inner, .orb-1, .orb-2 { animation: none; }
-    }
-  </style>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
 
@@ -373,56 +24,125 @@
       <div class="ring-dot"></div>
     </div>
     <h1>Audio <span>8D</span> Studio</h1>
-    <p class="subtitle">Transforme plusieurs sons en expérience spatiale 8D</p>
+    <p class="subtitle">Convertis tes sons en 8D ou télécharge les musiques Spotify</p>
   </header>
 
-  <div class="card">
-
-    <!-- Zone de dépôt (multi-fichier) -->
-    <div class="dropzone" id="dropzone">
-      <input type="file" id="fileInput" multiple accept=".mp3,.wav,.mp4,.mkv,.flac,.m4a,.aac,.ogg" />
-      <div class="dz-icon">
-        <svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
-      </div>
-      <div class="dz-label">Dépose tes fichiers ici</div>
-      <div class="dz-hint">ou clique pour en sélectionner plusieurs</div>
-      <div class="dz-formats">MP3 · WAV · FLAC · M4A · AAC · OGG · MP4 · MKV</div>
-    </div>
-
-    <!-- Liste des fichiers sélectionnés -->
-    <div class="file-list" id="fileList"></div>
-    <div class="file-count" id="fileCount"></div>
-
-    <!-- Bouton conversion -->
-    <button class="btn-convert" id="convertBtn" disabled>
+  <div class="main-content">
+  <!-- Tabs -->
+  <div class="tabs" role="tablist">
+    <button class="tab-btn active" data-tab="tab-convert" role="tab" aria-selected="true">
       <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-      Lancer la conversion 8D
+      <span>Conversion 8D</span>
     </button>
+    <button class="tab-btn" data-tab="tab-spotify" role="tab" aria-selected="false">
+      <svg viewBox="0 0 24 24"><path d="M19 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/><circle cx="12" cy="13" r="3"/><path d="M12 10v2l1 1"/></svg>
+      <span>Spotify Download</span>
+    </button>
+  </div>
 
-    <!-- Progression -->
-    <div class="progress-section" id="progressSection">
-      <div class="progress-header">
-        <span class="progress-label" id="progressLabel">Préparation…</span>
-        <span class="progress-pct" id="progressPct">0%</span>
+  <!-- ─── TAB 1 : Conversion 8D ─── -->
+  <div class="tab-content active" id="tab-convert" role="tabpanel">
+    <div class="card">
+      <!-- Zone de dépôt (multi-fichier) -->
+      <div class="dropzone" id="dropzone">
+        <input type="file" id="fileInput" multiple accept=".mp3,.wav,.mp4,.mkv,.flac,.m4a,.aac,.ogg" />
+        <div class="dz-icon">
+          <svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+        </div>
+        <div class="dz-label">Dépose tes fichiers ici</div>
+        <div class="dz-hint">ou clique pour en sélectionner plusieurs</div>
+        <div class="dz-formats">MP3 · WAV · FLAC · M4A · AAC · OGG · MP4 · MKV</div>
       </div>
-      <div class="progress-track">
-        <div class="progress-fill" id="progressFill"></div>
+
+      <!-- Liste des fichiers sélectionnés -->
+      <div class="file-list" id="fileList"></div>
+      <div class="file-count" id="fileCount"></div>
+
+      <!-- Bouton conversion -->
+      <button class="btn-primary" id="convertBtn" disabled>
+        <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        Lancer la conversion 8D
+      </button>
+
+      <!-- Progression -->
+      <div class="progress-section" id="progressSection">
+        <div class="progress-header">
+          <span class="progress-label" id="progressLabel">Préparation…</span>
+          <span class="progress-pct" id="progressPct">0%</span>
+        </div>
+        <div class="progress-track">
+          <div class="progress-fill" id="progressFill"></div>
+        </div>
+        <div class="progress-sub" id="progressSub"></div>
       </div>
-      <div class="progress-sub" id="progressSub"></div>
+
+      <!-- Message statut -->
+      <div class="status-msg" id="statusMsg">
+        <svg id="statusIcon" viewBox="0 0 24 24"></svg>
+        <span id="statusText"></span>
+      </div>
+
+      <!-- Bouton téléchargement (ZIP) -->
+      <a class="btn-download" id="downloadBtn" href="#">
+        <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Télécharger le ZIP 8D
+      </a>
     </div>
+  </div>
 
-    <!-- Message statut -->
-    <div class="status-msg" id="statusMsg">
-      <svg id="statusIcon" viewBox="0 0 24 24"></svg>
-      <span id="statusText"></span>
+  <!-- ─── TAB 2 : Spotify Download ─── -->
+  <div class="tab-content" id="tab-spotify" role="tabpanel">
+    <div class="card">
+      <div class="spotify-input-area">
+        <label>
+          <svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:var(--gold);fill:none;stroke-width:2;vertical-align:middle;margin-right:4px;"><path d="M19 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/><circle cx="12" cy="13" r="3"/><path d="M12 10v2l1 1"/></svg>
+          Lien Spotify
+        </label>
+        <input class="spotify-url-input" id="spotifyUrl" type="text" placeholder="https://open.spotify.com/track/..." autocomplete="url" spellcheck="false" />
+        <div class="spotify-hint">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+          Colle le lien d'une musique Spotify (track). Le nom et l'artiste seront conservés.
+        </div>
+      </div>
+
+      <!-- Résultat info (titre + artiste) -->
+      <div class="spotify-result" id="spotifyResult">
+        <svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+        <span class="sr-name" id="spotifyResultName">Musique téléchargée</span>
+        <span class="sr-artist" id="spotifyResultArtist">Artiste inconnu</span>
+      </div>
+
+      <!-- Bouton téléchargement Spotify -->
+      <button class="btn-primary btn-spotify" id="spotifyBtn" disabled>
+        <svg viewBox="0 0 24 24" style="stroke:#fff;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Télécharger depuis Spotify
+      </button>
+
+      <!-- Progression Spotify -->
+      <div class="progress-section" id="spotifyProgressSection">
+        <div class="progress-header">
+          <span class="progress-label" id="spotifyProgressLabel">Téléchargement…</span>
+          <span class="progress-pct" id="spotifyProgressPct">0%</span>
+        </div>
+        <div class="progress-track">
+          <div class="progress-fill green" id="spotifyProgressFill"></div>
+        </div>
+        <div class="progress-sub" id="spotifyProgressSub"></div>
+      </div>
+
+      <!-- Message statut Spotify -->
+      <div class="status-msg" id="spotifyStatusMsg">
+        <svg id="spotifyStatusIcon" viewBox="0 0 24 24"></svg>
+        <span id="spotifyStatusText"></span>
+      </div>
+
+      <!-- Bouton téléchargement fichier Spotify -->
+      <a class="btn-download" id="spotifyDownloadBtn" href="#">
+        <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Télécharger le fichier MP3
+      </a>
     </div>
-
-    <!-- Bouton téléchargement (ZIP) -->
-    <a class="btn-download" id="downloadBtn" href="#">
-      <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-      Télécharger le ZIP 8D
-    </a>
-
+  </div>
   </div>
 
   <footer>
@@ -430,206 +150,6 @@
   </footer>
 </div>
 
-<script>
-  const dropzone    = document.getElementById('dropzone');
-  const fileInput   = document.getElementById('fileInput');
-  const fileList    = document.getElementById('fileList');
-  const fileCount   = document.getElementById('fileCount');
-  const convertBtn  = document.getElementById('convertBtn');
-  const progressSec = document.getElementById('progressSection');
-  const progressLbl = document.getElementById('progressLabel');
-  const progressPct = document.getElementById('progressPct');
-  const progressFil = document.getElementById('progressFill');
-  const progressSub = document.getElementById('progressSub');
-  const statusMsg   = document.getElementById('statusMsg');
-  const statusIcon  = document.getElementById('statusIcon');
-  const statusText  = document.getElementById('statusText');
-  const downloadBtn = document.getElementById('downloadBtn');
-
-  let selectedFiles = [];
-  let pollInterval = null;
-
-  function formatSize(bytes) {
-    if (bytes < 1024) return bytes + ' o';
-    if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' Ko';
-    return (bytes / 1048576).toFixed(1) + ' Mo';
-  }
-
-  // ── Drag & drop ──
-  dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('dragging'); });
-  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragging'));
-  dropzone.addEventListener('drop', e => {
-    e.preventDefault();
-    dropzone.classList.remove('dragging');
-    const files = Array.from(e.dataTransfer.files).filter(f => {
-      const ext = '.' + f.name.split('.').pop().toLowerCase();
-      return '.mp3.wav.mp4.mkv.flac.m4a.aac.ogg'.includes(ext);
-    });
-    if (files.length) addFiles(files);
-  });
-
-  fileInput.addEventListener('change', () => {
-    if (fileInput.files.length) {
-      addFiles(Array.from(fileInput.files));
-      fileInput.value = '';
-    }
-  });
-
-  function addFiles(files) {
-    selectedFiles = selectedFiles.concat(files);
-    renderFileList();
-    convertBtn.disabled = selectedFiles.length === 0;
-    resetUI();
-  }
-
-  function removeFile(index) {
-    selectedFiles.splice(index, 1);
-    renderFileList();
-    convertBtn.disabled = selectedFiles.length === 0;
-    resetUI();
-  }
-
-  function renderFileList() {
-    fileList.innerHTML = '';
-    selectedFiles.forEach((f, i) => {
-      const item = document.createElement('div');
-      item.className = 'file-item';
-      item.innerHTML = `
-        <div class="fi-icon-small">
-          <svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
-        </div>
-        <span class="fi-name">${f.name}</span>
-        <span class="fi-size">${formatSize(f.size)}</span>
-        <button class="fi-remove" data-index="${i}" title="Retirer">✕</button>
-      `;
-      item.querySelector('.fi-remove').addEventListener('click', () => removeFile(i));
-      fileList.appendChild(item);
-    });
-    fileList.classList.toggle('visible', selectedFiles.length > 0);
-    fileCount.textContent = selectedFiles.length > 0 ? `${selectedFiles.length} fichier${selectedFiles.length > 1 ? 's' : ''} sélectionné${selectedFiles.length > 1 ? 's' : ''}` : '';
-  }
-
-  function resetUI() {
-    progressSec.classList.remove('visible');
-    statusMsg.classList.remove('visible', 'success', 'error', 'info');
-    downloadBtn.classList.remove('visible');
-    progressFil.style.width = '0%';
-    progressSub.textContent = '';
-    if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
-  }
-
-  function showStatus(type, iconPath, text) {
-    statusMsg.className = `status-msg visible ${type}`;
-    statusIcon.innerHTML = iconPath;
-    statusText.textContent = text;
-  }
-
-  // ── Conversion batch ──
-  convertBtn.addEventListener('click', () => {
-    if (selectedFiles.length === 0) return;
-
-    convertBtn.disabled = true;
-    downloadBtn.classList.remove('visible');
-    statusMsg.classList.remove('visible', 'success', 'error', 'info');
-    progressSec.classList.add('visible');
-    progressFil.style.width = '0%';
-    progressPct.textContent = '0%';
-    progressLbl.textContent = 'Envoi des fichiers… 0%';
-    progressSub.textContent = `${selectedFiles.length} fichier${selectedFiles.length > 1 ? 's' : ''} à traiter`;
-
-    const formData = new FormData();
-    selectedFiles.forEach(f => formData.append('files', f));
-
-    const xhr = new XMLHttpRequest();
-
-    // ── Suivi progression upload ──
-    xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable) {
-        const pct = Math.round((e.loaded / e.total) * 100);
-        progressFil.style.width = pct + '%';
-        progressPct.textContent = pct + '%';
-        progressLbl.textContent = 'Envoi des fichiers… ' + pct + '%';
-      }
-    };
-
-    // ── Upload terminé → polling batch ──
-    xhr.onload = () => {
-      if (xhr.status !== 200) {
-        let msg = 'Erreur lors de l\'envoi';
-        try {
-          const d = JSON.parse(xhr.responseText);
-          if (d.error) msg = d.error;
-        } catch (_) {}
-        showStatus('error', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>', msg);
-        convertBtn.disabled = false;
-        return;
-      }
-
-      let batchId, totalFiles;
-      try {
-        const data = JSON.parse(xhr.responseText);
-        batchId = data.batch_id;
-        totalFiles = data.total_files;
-      } catch (_) {
-        showStatus('error', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>', 'Réponse invalide du serveur.');
-        convertBtn.disabled = false;
-        return;
-      }
-
-      progressFil.style.width = '100%';
-      progressPct.textContent = '100%';
-      progressLbl.textContent = 'Fichiers envoyés ! Conversion en cours…';
-
-      // ── Polling progression batch ──
-      pollInterval = setInterval(async () => {
-        try {
-          const res  = await fetch(`/batch-progress/${batchId}`);
-          const data = await res.json();
-
-          const pct = data.progress || 0;
-          progressFil.style.width = pct + '%';
-          progressPct.textContent = pct + '%';
-
-          if (data.status === 'processing') {
-            progressLbl.textContent = `Conversion ${data.current_file}/${data.total_files} : ${data.current_file_name || ''}`;
-            progressSub.textContent = `Fichier ${data.current_file} sur ${data.total_files}`;
-          } else if (data.status === 'uploading') {
-            progressLbl.textContent = 'Préparation des fichiers…';
-          }
-
-          if (data.status === 'done') {
-            clearInterval(pollInterval);
-            progressLbl.textContent = 'Terminé !';
-            progressSub.textContent = `${data.output_count || totalFiles} fichier${(data.output_count || totalFiles) > 1 ? 's' : ''} converti${(data.output_count || totalFiles) > 1 ? 's' : ''}`;
-            showStatus('success', '<polyline stroke-linecap="round" stroke-linejoin="round" stroke-width="2" points="20 6 9 17 4 12"/>', 'Toutes les conversions sont terminées !');
-            downloadBtn.href = `/download-batch/${batchId}`;
-            downloadBtn.classList.add('visible');
-            convertBtn.disabled = false;
-          }
-
-          if (data.status === 'error') {
-            clearInterval(pollInterval);
-            showStatus('error', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>', 'Erreur : ' + (data.error || 'inconnue'));
-            convertBtn.disabled = false;
-          }
-
-        } catch (e) {
-          clearInterval(pollInterval);
-          showStatus('error', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>', 'Impossible de joindre le serveur.');
-          convertBtn.disabled = false;
-        }
-      }, 800);
-    };
-
-    // ── Erreur réseau ──
-    xhr.onerror = () => {
-      showStatus('error', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>', 'Erreur réseau. Vérifie ta connexion.');
-      convertBtn.disabled = false;
-    };
-
-    xhr.open('POST', '/convert-batch');
-    xhr.send(formData);
-  });
-</script>
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>
 </html>

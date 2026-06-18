@@ -2,5 +2,5 @@ services:
   - type: web
     name: audio-8d-studio
     runtime: python
-    buildCommand: apt-get update && apt-get install -y ffmpeg && pip install -r requirements.txt
-    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --timeout 300 --workers 2
+    buildCommand: apt-get update && apt-get install -y ffmpeg python3.11 python3.11-venv python3.11-dev && python3.11 -m pip install flask gunicorn
+    startCommand: python3.11 -m gunicorn app:app --bind 0.0.0.0:$PORT --timeout 300 --workers 2

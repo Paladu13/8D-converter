@@ -28,7 +28,7 @@ def _check_dependencies():
     return errors
 
 
-def _simulate_progress(job_id, spotify_jobs, stop_event, start_pct=10, end_pct=75, duration=60):
+def _simulate_progress(job_id, spotify_jobs, stop_event, start_pct=10, end_pct=75, duration=90):
     """
     Monte la progression de start_pct à end_pct sur ~duration secondes.
     S'arrête dès que stop_event est déclenché.
@@ -44,9 +44,73 @@ def _simulate_progress(job_id, spotify_jobs, stop_event, start_pct=10, end_pct=7
         if stop_event.is_set():
             return
         new_pct = int(start_pct + increment * (i + 1))
-        # Ne jamais dépasser end_pct ni écraser un statut d'erreur
         if spotify_jobs.get(job_id, {}).get('status') == 'downloading':
             spotify_jobs[job_id]['progress'] = min(new_pct, end_pct)
+
+
+def _build_spotdl_cmd(spotify_url, output_dir, provider='youtube-music'):
+    """Construit la commande spotdl selon le provider."""
+    cmd = [
+        'spotdl', 'download', spotify_url,
+        '--output', os.path.join(output_dir, '{artist} - {title}.{ext}'),
+        '--format', 'mp3',
+        '--bitrate', '192k',
+        '--overwrite', 'skip',
+        '--audio', provider,
+    ]
+
+    # Si des cookies YouTube sont disponibles (fichier monté sur Render via env ou secret)
+    cookies_path = os.environ.get('YOUTUBE_COOKIES_PATH', '')
+    if cookies_path and os.path.exists(cookies_path):
+        cmd += ['--cookie-file', cookies_path]
+
+    return cmd
+
+
+def _run_spotdl(cmd, output_dir, timeout=300):
+    """Lance spotdl et retourne (returncode, output_lines)."""
+    process = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        cwd=output_dir
+    )
+
+    output_lines = []
+    for line in process.stdout:
+        line = line.rstrip()
+        if line:
+            output_lines.append(line)
+
+    process.wait(timeout=timeout)
+    return process.returncode, output_lines, process
+
+
+def _find_audio_files(output_dir):
+    """Retourne tous les fichiers audio dans le dossier."""
+    extensions = ('*.mp3', '*.wav', '*.flac', '*.m4a', '*.ogg', '*.aac', '*.wma')
+    audio_files = []
+    for pattern in extensions:
+        audio_files.extend(glob.glob(os.path.join(output_dir, pattern)))
+    return audio_files
+
+
+def _is_youtube_blocked(output_lines):
+    """Détecte si YouTube Music a bloqué le téléchargement."""
+    full = '\n'.join(output_lines).lower()
+    blocked_signals = [
+        'ytdlp download error',
+        'yt-dlp download error',
+        'http error 403',
+        'http error 429',
+        'sign in to confirm',
+        'video unavailable',
+        'blocked',
+        'audioProviderError'.lower(),
+        'audioprovidererror',
+    ]
+    return any(sig in full for sig in blocked_signals)
 
 
 def process_spotify_download(job_id, spotify_url, spotify_jobs):
@@ -72,7 +136,7 @@ def process_spotify_download(job_id, spotify_url, spotify_jobs):
 
         spotify_jobs[job_id]['progress'] = 10
 
-        # ── Lancement de la progression simulée en parallèle ──
+        # ── Progression simulée en parallèle ──
         progress_thread = threading.Thread(
             target=_simulate_progress,
             args=(job_id, spotify_jobs, stop_event, 10, 75, 90),
@@ -80,82 +144,72 @@ def process_spotify_download(job_id, spotify_url, spotify_jobs):
         )
         progress_thread.start()
 
-        cmd = [
-            'spotdl', 'download', spotify_url,
-            '--output', os.path.join(output_dir, '{artist} - {title}.{ext}'),
-            '--format', 'mp3',
-            '--bitrate', '192k',
-            '--overwrite', 'skip'
-        ]
+        # ── Tentative 1 : YouTube Music (provider par défaut) ──
+        spotify_jobs[job_id]['provider_attempt'] = 'youtube-music'
+        cmd = _build_spotdl_cmd(spotify_url, output_dir, provider='youtube-music')
+        returncode, output_lines, process = _run_spotdl(cmd, output_dir, timeout=300)
 
-        process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,   # merge stderr dans stdout pour tout capturer
-            text=True,
-            cwd=output_dir
-        )
+        audio_files = _find_audio_files(output_dir)
 
-        # ── Lecture ligne par ligne pour détecter les erreurs tôt ──
-        output_lines = []
-        for line in process.stdout:
-            line = line.rstrip()
-            if line:
-                output_lines.append(line)
-                # Détection précoce d'erreurs connues
-                line_lower = line.lower()
-                if 'error' in line_lower or 'failed' in line_lower or 'exception' in line_lower:
-                    # On note mais on continue — spotdl peut logger des warnings non fatals
+        # ── Tentative 2 : SoundCloud si YouTube est bloqué ou a échoué sans fichier ──
+        if (returncode != 0 or not audio_files) and _is_youtube_blocked(output_lines):
+            spotify_jobs[job_id]['provider_attempt'] = 'soundcloud'
+
+            # Nettoyage avant retry
+            for f in glob.glob(os.path.join(output_dir, "*")):
+                try:
+                    os.remove(f)
+                except Exception:
                     pass
 
-        process.wait(timeout=300)
+            cmd2 = _build_spotdl_cmd(spotify_url, output_dir, provider='soundcloud')
+            returncode, output_lines, process = _run_spotdl(cmd2, output_dir, timeout=300)
+            audio_files = _find_audio_files(output_dir)
 
         # ── Arrêt de la progression simulée ──
         stop_event.set()
 
-        full_output = "\n".join(output_lines[-30:])  # dernières 30 lignes
+        full_output = "\n".join(output_lines[-30:])
 
-        if process.returncode != 0:
-            # Messages d'erreur courants et plus clairs
-            if 'no results' in full_output.lower() or 'not found' in full_output.lower():
-                raise RuntimeError("Musique introuvable sur YouTube Music. Essaie un autre lien Spotify.")
-            if 'ffmpeg' in full_output.lower():
-                raise RuntimeError("Erreur ffmpeg lors de la conversion. Vérifie l'installation de ffmpeg.")
-            if 'premium' in full_output.lower():
-                raise RuntimeError("Ce contenu nécessite un compte Spotify Premium ou n'est pas disponible.")
+        # ── Vérification du résultat final ──
+        if returncode != 0 and not audio_files:
+            full_lower = full_output.lower()
+            if 'no results' in full_lower or 'not found' in full_lower:
+                raise RuntimeError(
+                    "Musique introuvable (ni sur YouTube Music, ni sur SoundCloud). "
+                    "Essaie un autre lien Spotify."
+                )
+            if 'ffmpeg' in full_lower:
+                raise RuntimeError("Erreur ffmpeg lors de la conversion. Vérifie l'installation.")
+            if 'premium' in full_lower:
+                raise RuntimeError("Ce contenu nécessite Spotify Premium ou n'est pas disponible.")
+            if _is_youtube_blocked(output_lines):
+                raise RuntimeError(
+                    "YouTube Music et SoundCloud ont tous les deux refusé le téléchargement "
+                    "depuis ce serveur. Configure la variable d'environnement "
+                    "YOUTUBE_COOKIES_PATH pointant vers un fichier cookies.txt Netscape valide."
+                )
             raise RuntimeError(
-                f"spotdl a échoué (code {process.returncode}).\n"
-                f"Détails : {full_output[-400:] if full_output else 'Aucune sortie capturée.'}"
+                f"spotdl a échoué (code {returncode}).\n"
+                f"Détails : {full_output[-500:] if full_output else 'Aucune sortie capturée.'}"
             )
+
+        if not audio_files:
+            all_files = glob.glob(os.path.join(output_dir, "*"))
+            debug = (
+                f"Fichiers présents : {[os.path.basename(f) for f in all_files]}\n"
+                f"Output spotdl :\n{full_output[-500:]}"
+            )
+            raise RuntimeError(f"Aucun fichier audio trouvé après téléchargement.\n{debug}")
 
         spotify_jobs[job_id]['progress'] = 80
 
-        # ── Recherche de TOUS les fichiers audio générés (pas que .mp3) ──
-        audio_extensions = ('*.mp3', '*.wav', '*.flac', '*.m4a', '*.ogg', '*.aac', '*.wma')
-        audio_files = []
-        for pattern in audio_extensions:
-            audio_files.extend(glob.glob(os.path.join(output_dir, pattern)))
-
-        if not audio_files:
-            # Debug : lister tout ce qui est dans le dossier
-            all_files = glob.glob(os.path.join(output_dir, "*"))
-            debug_info = (
-                f"Fichiers dans output_dir : {[os.path.basename(f) for f in all_files]}\n"
-                f"Processus terminé avec code {process.returncode}\n"
-                f"Output spotdl (dernières lignes) :\n{full_output[-600:]}"
-            ) if all_files else (
-                f"Dossier output_dir vide.\n"
-                f"Output spotdl (dernières lignes) :\n{full_output[-600:]}"
-            )
-            raise RuntimeError(f"Aucun fichier audio trouvé après téléchargement.\n{debug_info}")
-
         downloaded_file = max(audio_files, key=os.path.getmtime)
 
-        # Nom brut du fichier : "Artist - Title" (template spotdl)
+        # "Artist - Title" → on inverse en "Title - Artist"
         raw_name = os.path.splitext(os.path.basename(downloaded_file))[0]
-        track_name = raw_name  # exposé tel quel au frontend pour l'affichage
+        track_name = raw_name
 
-        # Nom du fichier de téléchargement : "Title - Artist.mp3"
         dash_idx = raw_name.find(' - ')
         if dash_idx != -1:
             artist = raw_name[:dash_idx]
@@ -165,14 +219,13 @@ def process_spotify_download(job_id, spotify_url, spotify_jobs):
             download_name = f"{raw_name}.mp3"
         download_name = sanitize_filename(download_name)
 
-        # L'extension réelle du fichier téléchargé (mp3, flac, m4a, etc.)
         actual_ext = os.path.splitext(downloaded_file)[1].lower()
         final_path = os.path.join(UPLOAD_FOLDER, f"spotify_{job_id}_final{actual_ext}")
         if os.path.exists(final_path):
             os.remove(final_path)
         os.rename(downloaded_file, final_path)
 
-        # ── Nettoyage du dossier temporaire ──
+        # ── Nettoyage ──
         for f in glob.glob(os.path.join(output_dir, "*")):
             try:
                 os.remove(f)
@@ -202,7 +255,10 @@ def process_spotify_download(job_id, spotify_url, spotify_jobs):
     except Exception as e:
         stop_event.set()
         if process and process.poll() is None:
-            process.kill()
+            try:
+                process.kill()
+            except Exception:
+                pass
         spotify_jobs[job_id] = {
             'status': 'error',
             'progress': 0,

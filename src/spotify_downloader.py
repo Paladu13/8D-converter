@@ -108,13 +108,14 @@ def process_spotify_download(job_id, spotify_url, spotify_jobs):
                     # On note mais on continue — spotdl peut logger des warnings non fatals
                     pass
 
-        process.wait(timeout=180)
+        process.wait(timeout=300)
 
         # ── Arrêt de la progression simulée ──
         stop_event.set()
 
+        full_output = "\n".join(output_lines[-30:])  # dernières 30 lignes
+
         if process.returncode != 0:
-            full_output = "\n".join(output_lines[-20:])  # dernières 20 lignes
             # Messages d'erreur courants et plus clairs
             if 'no results' in full_output.lower() or 'not found' in full_output.lower():
                 raise RuntimeError("Musique introuvable sur YouTube Music. Essaie un autre lien Spotify.")
@@ -129,15 +130,26 @@ def process_spotify_download(job_id, spotify_url, spotify_jobs):
 
         spotify_jobs[job_id]['progress'] = 80
 
-        # ── Recherche du fichier MP3 généré ──
-        mp3_files = glob.glob(os.path.join(output_dir, "*.mp3"))
-        if not mp3_files:
-            # Cherche aussi d'autres formats au cas où la conversion a partiellement réussi
-            any_files = glob.glob(os.path.join(output_dir, "*"))
-            detail = f"Fichiers présents : {[os.path.basename(f) for f in any_files]}" if any_files else "Dossier vide."
-            raise RuntimeError(f"Aucun fichier MP3 trouvé après téléchargement. {detail}")
+        # ── Recherche de TOUS les fichiers audio générés (pas que .mp3) ──
+        audio_extensions = ('*.mp3', '*.wav', '*.flac', '*.m4a', '*.ogg', '*.aac', '*.wma')
+        audio_files = []
+        for pattern in audio_extensions:
+            audio_files.extend(glob.glob(os.path.join(output_dir, pattern)))
 
-        downloaded_file = max(mp3_files, key=os.path.getmtime)
+        if not audio_files:
+            # Debug : lister tout ce qui est dans le dossier
+            all_files = glob.glob(os.path.join(output_dir, "*"))
+            debug_info = (
+                f"Fichiers dans output_dir : {[os.path.basename(f) for f in all_files]}\n"
+                f"Processus terminé avec code {process.returncode}\n"
+                f"Output spotdl (dernières lignes) :\n{full_output[-600:]}"
+            ) if all_files else (
+                f"Dossier output_dir vide.\n"
+                f"Output spotdl (dernières lignes) :\n{full_output[-600:]}"
+            )
+            raise RuntimeError(f"Aucun fichier audio trouvé après téléchargement.\n{debug_info}")
+
+        downloaded_file = max(audio_files, key=os.path.getmtime)
 
         # Nom brut du fichier : "Artist - Title" (template spotdl)
         raw_name = os.path.splitext(os.path.basename(downloaded_file))[0]
@@ -153,7 +165,9 @@ def process_spotify_download(job_id, spotify_url, spotify_jobs):
             download_name = f"{raw_name}.mp3"
         download_name = sanitize_filename(download_name)
 
-        final_path = os.path.join(UPLOAD_FOLDER, f"spotify_{job_id}_final.mp3")
+        # L'extension réelle du fichier téléchargé (mp3, flac, m4a, etc.)
+        actual_ext = os.path.splitext(downloaded_file)[1].lower()
+        final_path = os.path.join(UPLOAD_FOLDER, f"spotify_{job_id}_final{actual_ext}")
         if os.path.exists(final_path):
             os.remove(final_path)
         os.rename(downloaded_file, final_path)
@@ -182,7 +196,7 @@ def process_spotify_download(job_id, spotify_url, spotify_jobs):
         spotify_jobs[job_id] = {
             'status': 'error',
             'progress': 0,
-            'error': 'Le téléchargement a pris trop de temps (limite 180s). Réessaie ou vérifie ta connexion.',
+            'error': 'Le téléchargement a pris trop de temps (limite 300s). Réessaie ou vérifie ta connexion.',
             'file_path': None
         }
     except Exception as e:

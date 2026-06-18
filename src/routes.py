@@ -156,6 +156,20 @@ def init_routes(app):
                 return jsonify({'error': 'Fichiers de sortie introuvables.'}), 404
             return jsonify({'error': 'Batch pas encore terminé.'}), 404
 
+        # ── Si un seul fichier, on l'envoie directement sans zip ──
+        if len(output_paths) == 1:
+            orig_filename, output_path = output_paths[0]
+            if not os.path.exists(output_path):
+                return jsonify({'error': 'Fichier de sortie introuvable.'}), 404
+            download_name = f"{os.path.splitext(orig_filename)[0]}_8D.mp3"
+            return send_file(
+                output_path,
+                as_attachment=True,
+                download_name=download_name,
+                mimetype="audio/mpeg"
+            )
+
+        # ── Plusieurs fichiers → zip ──
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
             for orig_filename, output_path in output_paths:

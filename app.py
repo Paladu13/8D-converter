@@ -4,13 +4,132 @@ import uuid
 import threading
 import time
 import glob
+import struct
+import sys
 from flask import Flask, request, jsonify, send_file, render_template
 from pydub import AudioSegment
 from pydub.utils import which
 import tempfile
 
+# ──────────────────────────────────────────────
+# Polyfill audioop pour Python 3.13+ (audioop retiré de la stdlib)
+# pydub en dépend, donc on fournit une implémentation minimaliste
+# ──────────────────────────────────────────────
+try:
+    import audioop
+except ImportError:
+    # Polyfill minimal de audioop pour pydub
+    class _audioop:
+        @staticmethod
+        def tostereo(data, width, lfactor, rfactor):
+            """Convertit un échantillon mono en stéréo (implémentation simplifiée)."""
+            if width == 2:
+                fmt = "<h"
+                count = len(data) // 2
+                samples = struct.unpack(f"<{count}h", data)
+                left = [int(s * lfactor) for s in samples]
+                right = [int(s * rfactor) for s in samples]
+                # Clamp
+                left = [max(-32768, min(32767, s)) for s in left]
+                right = [max(-32768, min(32767, s)) for s in right]
+                result = bytearray(len(data) * 2)
+                for i, (l, r) in enumerate(zip(left, right)):
+                    struct.pack_into("<hh", result, i * 4, l, r)
+                return bytes(result)
+            else:
+                raise ValueError(f"Unsupported width: {width}")
+
+        @staticmethod
+        def max(data, width):
+            if width == 2:
+                count = len(data) // 2
+                fmt = f"<{count}h"
+                samples = struct.unpack(fmt, data)
+                return max(abs(s) for s in samples)
+            return 0
+
+        @staticmethod
+        def avg(data, width):
+            if width == 2:
+                count = len(data) // 2
+                fmt = f"<{count}h"
+                samples = struct.unpack(fmt, data)
+                return sum(samples) // count
+            return 0
+
+        @staticmethod
+        def avgpp(data, width):
+            return 0
+
+        @staticmethod
+        def maxpp(data, width):
+            return 0
+
+        @staticmethod
+        def cross(data, width):
+            if width == 2:
+                count = len(data) // 2
+                fmt = f"<{count}h"
+                samples = struct.unpack(fmt, data)
+                crosses = 0
+                for i in range(1, len(samples)):
+                    if (samples[i-1] < 0 and samples[i] >= 0) or \
+                       (samples[i-1] >= 0 and samples[i] < 0):
+                        crosses += 1
+                return crosses
+            return 0
+
+        @staticmethod
+        def mul(data, width, factor):
+            if width == 2:
+                count = len(data) // 2
+                fmt = f"<{count}h"
+                samples = struct.unpack(fmt, data)
+                samples = [int(s * factor) for s in samples]
+                samples = [max(-32768, min(32767, s)) for s in samples]
+                return struct.pack(f"<{count}h", *samples)
+            return data
+
+        @staticmethod
+        def bias(data, width, bias_val):
+            if width == 2:
+                count = len(data) // 2
+                fmt = f"<{count}h"
+                samples = struct.unpack(fmt, data)
+                samples = [max(-32768, min(32767, s + bias_val)) for s in samples]
+                return struct.pack(f"<{count}h", *samples)
+            return data
+
+        @staticmethod
+        def lin2lin(data, width, newwidth):
+            if width == newwidth:
+                return data
+            # Conversion simple entre largeurs
+            if width == 2 and newwidth == 1:
+                count = len(data) // 2
+                fmt = f"<{count}h"
+                samples = struct.unpack(fmt, data)
+                samples = [max(-128, min(127, s >> 2)) for s in samples]
+                return struct.pack(f"<{count}b", *samples)
+            if width == 1 and newwidth == 2:
+                samples = list(data)
+                # Correction pour les bytes signés
+                samples = [s - 128 if s > 127 else s for s in samples]
+                samples = [max(-32768, min(32767, s << 2)) for s in samples]
+                return struct.pack(f"<{len(samples)}h", *samples)
+            return data
+
+        @staticmethod
+        def getsample(data, width, index):
+            if width == 2:
+                return struct.unpack_from("<h", data, index * 2)[0]
+            return 0
+
+    audioop = _audioop()
+    sys.modules['audioop'] = audioop
+
+
 # --- Configuration de ffmpeg pour pydub ---
-# Sur Render, ffmpeg est installé dans /usr/bin/ffmpeg via le buildCommand du render.yaml
 ffmpeg_path = which("ffmpeg")
 ffprobe_path = which("ffprobe")
 if ffmpeg_path:
@@ -23,31 +142,29 @@ app = Flask(__name__)
 # Stockage temporaire des progressions par job_id
 jobs = {}
 
-UPLOAD_FOLDER = tempfile.gettempdir()  # Sur Render = /tmp
+UPLOAD_FOLDER = tempfile.gettempdir()
 ALLOWED_EXTENSIONS = {'mp3', 'wav', 'mp4', 'mkv', 'flac', 'm4a', 'aac', 'ogg'}
 
-# Durée de vie max des fichiers temporaires (en secondes)
 MAX_FILE_AGE = 3600  # 1 heure
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def cleanup_old_files():
-    """Nettoie les fichiers temporaires de plus de MAX_FILE_AGE secondes."""
     now = time.time()
-    for f in glob.glob(os.path.join(UPLOAD_FOLDER, "*_input.*")) + \
-             glob.glob(os.path.join(UPLOAD_FOLDER, "*_output_8D.mp3")):
-        try:
-            if now - os.path.getmtime(f) > MAX_FILE_AGE:
-                os.remove(f)
-        except Exception:
-            pass
+    for pattern in [os.path.join(UPLOAD_FOLDER, "*_input.*"),
+                    os.path.join(UPLOAD_FOLDER, "*_output_8D.mp3")]:
+        for f in glob.glob(pattern):
+            try:
+                if now - os.path.getmtime(f) > MAX_FILE_AGE:
+                    os.remove(f)
+            except Exception:
+                pass
 
 def process_8d(job_id, input_path, output_path):
     try:
         jobs[job_id] = {'status': 'loading', 'progress': 0, 'error': None}
 
-        # Vérifier que ffmpeg est disponible
         if not which("ffmpeg"):
             raise RuntimeError(
                 "ffmpeg n'est pas installé sur le serveur. "
@@ -107,7 +224,6 @@ def convert():
     if not allowed_file(file.filename):
         return jsonify({'error': 'Format non supporté.'}), 400
 
-    # Nettoyage périodique des vieux fichiers
     cleanup_old_files()
 
     job_id = str(uuid.uuid4())
@@ -149,7 +265,6 @@ def download(job_id):
 
 @app.route('/health')
 def health():
-    """Endpoint de health check pour Render."""
     ffmpeg_ok = which("ffmpeg") is not None
     return jsonify({
         'status': 'ok',

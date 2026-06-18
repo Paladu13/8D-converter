@@ -1,7 +1,7 @@
 """
 Module de téléchargement Spotify.
-Stratégie : spotdl metadata → yt-dlp recherche YouTube directe (pas YouTube Music).
-YouTube Music est blacklisté sur Render, yt-dlp + YouTube search fonctionne.
+Stratégie sur Render : spotdl metadata → yt-dlp ytsearch YouTube direct.
+YouTube Music est blacklisté sur les IPs cloud, on évite complètement spotdl download.
 """
 import os
 import re
@@ -16,14 +16,11 @@ from .audio_processor import UPLOAD_FOLDER
 
 
 def sanitize_filename(name):
-    """Supprime les caractères invalides pour un nom de fichier."""
     return re.sub(r'[<>:"/\\|?*]', '', name).strip()
 
 
 def _check_dependencies():
     errors = []
-    if not shutil.which("spotdl"):
-        errors.append("spotdl n'est pas installé (pip install spotdl)")
     if not shutil.which("ffmpeg"):
         errors.append("ffmpeg n'est pas installé")
     if not shutil.which("yt-dlp"):
@@ -48,35 +45,57 @@ def _simulate_progress(job_id, spotify_jobs, stop_event, start_pct=10, end_pct=7
 
 def _get_spotify_metadata(spotify_url):
     """
-    Utilise spotdl --save pour récupérer les métadonnées (titre, artiste)
-    sans télécharger. Retourne (artist, title) ou (None, None) si échec.
+    Récupère artiste + titre via l'API publique Spotify (pas besoin de clé).
+    Parse l'URL pour extraire le track_id, puis appelle l'embed API.
     """
+    try:
+        # Extraire le track ID de l'URL
+        match = re.search(r'track/([A-Za-z0-9]+)', spotify_url)
+        if not match:
+            return None, None
+        track_id = match.group(1)
+
+        # Appel à l'API embed Spotify (publique, sans auth)
+        cmd = [
+            'yt-dlp',
+            '--no-playlist',
+            '--skip-download',
+            '--print', '%(artist)s|||%(title)s',
+            f'https://open.spotify.com/track/{track_id}'
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
+        if result.returncode == 0 and '|||' in result.stdout:
+            parts = result.stdout.strip().split('|||')
+            if len(parts) == 2 and parts[0] and parts[1]:
+                return parts[0].strip(), parts[1].strip()
+    except Exception:
+        pass
+
+    # Fallback : spotdl save
     try:
         result = subprocess.run(
             ['spotdl', 'save', spotify_url, '--save-file', '/dev/stdout'],
             capture_output=True, text=True, timeout=30
         )
-        # spotdl save retourne un JSON avec la liste des chansons
-        data = json.loads(result.stdout)
-        if data and isinstance(data, list) and len(data) > 0:
-            song = data[0]
-            artist = song.get('artist') or (song.get('artists', [''])[0] if song.get('artists') else '')
-            title = song.get('name') or song.get('title') or ''
-            return artist.strip(), title.strip()
+        if result.returncode == 0 and result.stdout.strip():
+            data = json.loads(result.stdout)
+            if data and isinstance(data, list):
+                song = data[0]
+                artist = song.get('artist') or (song.get('artists', [''])[0] if song.get('artists') else '')
+                title = song.get('name') or song.get('title') or ''
+                if artist and title:
+                    return artist.strip(), title.strip()
     except Exception:
         pass
+
     return None, None
 
 
-def _download_via_ytdlp(artist, title, output_dir):
+def _download_ytdlp(query, output_dir, output_template):
     """
-    Télécharge via yt-dlp avec une recherche YouTube standard (ytsearch).
-    Beaucoup moins restrictif que YouTube Music sur les serveurs cloud.
-    Retourne le chemin du fichier téléchargé ou None.
+    Télécharge via yt-dlp. query peut être une URL YouTube ou un ytsearch:.
+    Retourne le chemin mp3 ou None.
     """
-    search_query = f"ytsearch1:{artist} - {title} audio"
-    output_template = os.path.join(output_dir, f"{artist} - {title}.%(ext)s")
-
     cmd = [
         'yt-dlp',
         '--no-playlist',
@@ -85,11 +104,10 @@ def _download_via_ytdlp(artist, title, output_dir):
         '--audio-quality', '192K',
         '--output', output_template,
         '--no-warnings',
-        '--quiet',
-        search_query
+        # Pas de --quiet pour voir les erreurs dans les logs
+        query
     ]
 
-    # Cookies YouTube optionnels (montés sur Render via secret file)
     cookies_path = os.environ.get('YOUTUBE_COOKIES_PATH', '')
     if cookies_path and os.path.exists(cookies_path):
         cmd += ['--cookies', cookies_path]
@@ -98,55 +116,18 @@ def _download_via_ytdlp(artist, title, output_dir):
 
     mp3_files = glob.glob(os.path.join(output_dir, "*.mp3"))
     if mp3_files:
-        return max(mp3_files, key=os.path.getmtime)
+        return max(mp3_files, key=os.path.getmtime), result.stdout + result.stderr
 
-    return None
-
-
-def _download_via_spotdl_soundcloud(spotify_url, output_dir):
-    """
-    Fallback : spotdl avec SoundCloud comme provider.
-    """
-    cmd = [
-        'spotdl', 'download', spotify_url,
-        '--output', os.path.join(output_dir, '{artist} - {title}.{ext}'),
-        '--format', 'mp3',
-        '--bitrate', '192k',
-        '--overwrite', 'skip',
-        '--audio', 'soundcloud',
-    ]
-
-    process = subprocess.Popen(
-        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-        text=True, cwd=output_dir
-    )
-    output_lines = []
-    for line in process.stdout:
-        line = line.rstrip()
-        if line:
-            output_lines.append(line)
-    process.wait(timeout=300)
-
-    audio_files = []
-    for pattern in ('*.mp3', '*.wav', '*.flac', '*.m4a', '*.ogg', '*.aac'):
-        audio_files.extend(glob.glob(os.path.join(output_dir, pattern)))
-
-    if audio_files:
-        return max(audio_files, key=os.path.getmtime), output_lines
-
-    return None, output_lines
+    return None, result.stdout + result.stderr
 
 
 def process_spotify_download(job_id, spotify_url, spotify_jobs):
-    """Télécharge une musique depuis un lien Spotify."""
     stop_event = threading.Event()
 
     try:
         spotify_jobs[job_id] = {
-            'status': 'downloading',
-            'progress': 5,
-            'error': None,
-            'file_path': None
+            'status': 'downloading', 'progress': 5,
+            'error': None, 'file_path': None
         }
 
         dep_errors = _check_dependencies()
@@ -158,7 +139,6 @@ def process_spotify_download(job_id, spotify_url, spotify_jobs):
 
         spotify_jobs[job_id]['progress'] = 10
 
-        # ── Progression simulée ──
         progress_thread = threading.Thread(
             target=_simulate_progress,
             args=(job_id, spotify_jobs, stop_event, 10, 75, 90),
@@ -167,84 +147,86 @@ def process_spotify_download(job_id, spotify_url, spotify_jobs):
         progress_thread.start()
 
         downloaded_file = None
+        last_output = ''
         artist, title = None, None
-        last_error_lines = []
 
-        # ── Étape 1 : récupérer les métadonnées Spotify ──
+        # ── Étape 1 : métadonnées Spotify ──
         spotify_jobs[job_id]['step'] = 'metadata'
         artist, title = _get_spotify_metadata(spotify_url)
 
-        # ── Étape 2 : yt-dlp recherche YouTube standard (marche sur Render) ──
         if artist and title:
-            spotify_jobs[job_id]['step'] = 'ytdlp'
-            try:
-                downloaded_file = _download_via_ytdlp(artist, title, output_dir)
-            except Exception as e:
-                last_error_lines = [str(e)]
+            safe_name = sanitize_filename(f"{artist} - {title}")
+            tpl = os.path.join(output_dir, f"{safe_name}.%(ext)s")
 
-        # ── Étape 3 : fallback spotdl + SoundCloud ──
+            # ── Étape 2a : yt-dlp ytsearch YouTube (marche sur Render) ──
+            spotify_jobs[job_id]['step'] = 'ytdlp-search'
+            query = f"ytsearch1:{artist} - {title}"
+            downloaded_file, last_output = _download_ytdlp(query, output_dir, tpl)
+
+            # ── Étape 2b : yt-dlp ytsearch avec "official audio" ──
+            if not downloaded_file:
+                for f in glob.glob(os.path.join(output_dir, "*")):
+                    try: os.remove(f)
+                    except: pass
+                query2 = f"ytsearch1:{artist} {title} official audio"
+                downloaded_file, last_output = _download_ytdlp(query2, output_dir, tpl)
+
+            # ── Étape 2c : yt-dlp ytsearch lyrics/topic ──
+            if not downloaded_file:
+                for f in glob.glob(os.path.join(output_dir, "*")):
+                    try: os.remove(f)
+                    except: pass
+                query3 = f"ytsearch1:{title} {artist} lyrics"
+                downloaded_file, last_output = _download_ytdlp(query3, output_dir, tpl)
+
+        # ── Étape 3 : spotdl SoundCloud (sans YouTube Music) ──
         if not downloaded_file:
             spotify_jobs[job_id]['step'] = 'soundcloud'
-            # Nettoyer avant retry
             for f in glob.glob(os.path.join(output_dir, "*")):
-                try:
-                    os.remove(f)
-                except Exception:
-                    pass
-            downloaded_file, last_error_lines = _download_via_spotdl_soundcloud(
-                spotify_url, output_dir
-            )
+                try: os.remove(f)
+                except: pass
 
-        # ── Étape 4 : spotdl YouTube Music (dernière chance, peut échouer sur Render) ──
-        if not downloaded_file:
-            spotify_jobs[job_id]['step'] = 'spotdl-yt'
-            for f in glob.glob(os.path.join(output_dir, "*")):
-                try:
-                    os.remove(f)
-                except Exception:
-                    pass
-            cmd_yt = [
+            cmd_sc = [
                 'spotdl', 'download', spotify_url,
                 '--output', os.path.join(output_dir, '{artist} - {title}.{ext}'),
-                '--format', 'mp3', '--bitrate', '192k', '--overwrite', 'skip',
-                '--audio', 'youtube-music',
+                '--format', 'mp3', '--bitrate', '192k',
+                '--overwrite', 'skip',
+                '--audio', 'soundcloud',
             ]
-            process_yt = subprocess.Popen(
-                cmd_yt, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            proc = subprocess.Popen(
+                cmd_sc, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                 text=True, cwd=output_dir
             )
-            last_error_lines = []
-            for line in process_yt.stdout:
+            lines = []
+            for line in proc.stdout:
                 line = line.rstrip()
-                if line:
-                    last_error_lines.append(line)
-            process_yt.wait(timeout=300)
+                if line: lines.append(line)
+            proc.wait(timeout=300)
+            last_output = '\n'.join(lines)
 
             audio_files = []
-            for pattern in ('*.mp3', '*.wav', '*.flac', '*.m4a', '*.ogg', '*.aac'):
-                audio_files.extend(glob.glob(os.path.join(output_dir, pattern)))
+            for pat in ('*.mp3', '*.wav', '*.flac', '*.m4a', '*.ogg', '*.aac'):
+                audio_files.extend(glob.glob(os.path.join(output_dir, pat)))
             if audio_files:
                 downloaded_file = max(audio_files, key=os.path.getmtime)
 
         stop_event.set()
 
         if not downloaded_file:
-            full_output = "\n".join(last_error_lines[-20:])
+            titre_detecte = f"{artist} - {title}" if artist and title else "non récupéré"
             raise RuntimeError(
-                f"Impossible de télécharger cette musique depuis ce serveur.\n"
-                f"Titre détecté : {f'{artist} - {title}' if artist and title else 'non récupéré'}\n"
-                f"Détails : {full_output[-400:] if full_output else 'Aucune sortie.'}"
+                f"Impossible de télécharger depuis ce serveur.\n"
+                f"Titre détecté : {titre_detecte}\n"
+                f"Dernière sortie :\n{last_output[-600:]}"
             )
 
         spotify_jobs[job_id]['progress'] = 85
 
-        # ── Nommage du fichier de sortie ──
+        # ── Nommage ──
         raw_name = os.path.splitext(os.path.basename(downloaded_file))[0]
-
-        # Préférer les métadonnées Spotify pour le nom propre
         if artist and title:
-            download_name = sanitize_filename(f"{title} - {artist}.mp3")
             track_name = f"{artist} - {title}"
+            download_name = sanitize_filename(f"{title} - {artist}.mp3")
         else:
             track_name = raw_name
             dash_idx = raw_name.find(' - ')
@@ -261,28 +243,24 @@ def process_spotify_download(job_id, spotify_url, spotify_jobs):
             os.remove(final_path)
         os.rename(downloaded_file, final_path)
 
-        # ── Nettoyage ──
         for f in glob.glob(os.path.join(output_dir, "*")):
-            try:
-                os.remove(f)
-            except Exception:
-                pass
-        try:
-            os.rmdir(output_dir)
-        except Exception:
-            pass
+            try: os.remove(f)
+            except: pass
+        try: os.rmdir(output_dir)
+        except: pass
 
-        spotify_jobs[job_id]['status'] = 'done'
-        spotify_jobs[job_id]['progress'] = 100
-        spotify_jobs[job_id]['file_path'] = final_path
-        spotify_jobs[job_id]['track_name'] = track_name
-        spotify_jobs[job_id]['download_name'] = download_name
+        spotify_jobs[job_id].update({
+            'status': 'done', 'progress': 100,
+            'file_path': final_path,
+            'track_name': track_name,
+            'download_name': download_name
+        })
 
     except subprocess.TimeoutExpired:
         stop_event.set()
         spotify_jobs[job_id] = {
             'status': 'error', 'progress': 0,
-            'error': 'Le téléchargement a pris trop de temps (300s). Réessaie.',
+            'error': 'Téléchargement trop long (300s). Réessaie.',
             'file_path': None
         }
     except Exception as e:

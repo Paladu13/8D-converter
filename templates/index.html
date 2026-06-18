@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>8D Audio Studio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #1A1A2E;
+      --surface:   #24243E;
+      --border:    #3A3A5C;
+      --beige:     #E8D5B7;
+      --gold:      #C9A96E;
+      --gold-dim:  #9A7A4A;
+      --text-muted:#8A8AAA;
+      --green:     #6EBF8B;
+      --red:       #BF6E6E;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--beige);
+      font-family: 'Inter', sans-serif;
+      overflow-x: hidden;
+    }
+
+    /* ── Orbes de fond ── */
+    .bg-orbs {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      overflow: hidden;
+    }
+    .orb {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(80px);
+      opacity: 0.18;
+    }
+    .orb-1 {
+      width: 520px; height: 520px;
+      background: radial-gradient(circle, #C9A96E, transparent 70%);
+      top: -120px; left: -120px;
+      animation: drift1 18s ease-in-out infinite alternate;
+    }
+    .orb-2 {
+      width: 400px; height: 400px;
+      background: radial-gradient(circle, #6E8EBF, transparent 70%);
+      bottom: -100px; right: -80px;
+      animation: drift2 22s ease-in-out infinite alternate;
+    }
+    @keyframes drift1 { from { transform: translate(0,0); } to { transform: translate(60px, 40px); } }
+    @keyframes drift2 { from { transform: translate(0,0); } to { transform: translate(-50px, -30px); } }
+
+    /* ── Layout ── */
+    .page {
+      position: relative;
+      z-index: 1;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 48px 16px;
+    }
+
+    /* ── Header ── */
+    header {
+      text-align: center;
+      margin-bottom: 48px;
+    }
+
+    .logo-ring {
+      display: inline-block;
+      position: relative;
+      width: 72px;
+      height: 72px;
+      margin-bottom: 20px;
+    }
+    .ring {
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      border: 2px solid transparent;
+    }
+    .ring-outer {
+      border-color: var(--gold);
+      animation: spin-cw 8s linear infinite;
+    }
+    .ring-inner {
+      inset: 12px;
+      border-color: var(--beige);
+      opacity: 0.5;
+      animation: spin-ccw 5s linear infinite;
+    }
+    .ring-dot {
+      position: absolute;
+      inset: 28px;
+      background: var(--gold);
+      border-radius: 50%;
+      opacity: 0.9;
+    }
+    @keyframes spin-cw  { from { transform: rotate(0deg); }   to { transform: rotate(360deg); } }
+    @keyframes spin-ccw { from { transform: rotate(0deg); }   to { transform: rotate(-360deg); } }
+
+    h1 {
+      font-family: 'Syne', sans-serif;
+      font-size: clamp(2rem, 5vw, 3rem);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: var(--beige);
+      line-height: 1.1;
+    }
+    h1 span { color: var(--gold); }
+
+    .subtitle {
+      margin-top: 10px;
+      font-size: 0.95rem;
+      color: var(--text-muted);
+      font-weight: 400;
+    }
+
+    /* ── Card ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      width: 100%;
+      max-width: 520px;
+      padding: 36px;
+    }
+
+    /* ── Drop zone ── */
+    .dropzone {
+      border: 2px dashed var(--border);
+      border-radius: 14px;
+      padding: 40px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      position: relative;
+    }
+    .dropzone:hover, .dropzone.dragging {
+      border-color: var(--gold);
+      background: rgba(201,169,110,0.05);
+    }
+    .dropzone input {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+
+    .dz-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 52px; height: 52px;
+      border-radius: 14px;
+      background: rgba(201,169,110,0.12);
+      margin-bottom: 14px;
+    }
+    .dz-icon svg { width: 26px; height: 26px; stroke: var(--gold); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+    .dz-label {
+      font-family: 'Syne', sans-serif;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--beige);
+      margin-bottom: 4px;
+    }
+    .dz-hint {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+    }
+    .dz-formats {
+      font-size: 0.72rem;
+      color: var(--gold-dim);
+      margin-top: 8px;
+      letter-spacing: 0.04em;
+    }
+
+    /* ── File chosen state ── */
+    .file-info {
+      display: none;
+      align-items: center;
+      gap: 14px;
+      background: rgba(201,169,110,0.07);
+      border: 1px solid rgba(201,169,110,0.25);
+      border-radius: 12px;
+      padding: 14px 16px;
+      margin-top: 16px;
+    }
+    .file-info.visible { display: flex; }
+    .fi-icon { width: 36px; height: 36px; flex-shrink: 0; background: rgba(201,169,110,0.15); border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+    .fi-icon svg { width: 18px; height: 18px; stroke: var(--gold); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .fi-name { font-size: 0.85rem; color: var(--beige); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+    .fi-remove { background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 1.1rem; line-height: 1; padding: 2px 4px; border-radius: 4px; transition: color 0.15s; }
+    .fi-remove:hover { color: var(--red); }
+
+    /* ── Button ── */
+    .btn-convert {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      width: 100%;
+      margin-top: 20px;
+      padding: 16px;
+      border: none;
+      border-radius: 12px;
+      background: linear-gradient(135deg, var(--gold) 0%, #A8803A 100%);
+      color: #1A1A2E;
+      font-family: 'Syne', sans-serif;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.15s;
+      letter-spacing: 0.02em;
+    }
+    .btn-convert:disabled { opacity: 0.35; cursor: not-allowed; transform: none !important; }
+    .btn-convert:not(:disabled):hover { opacity: 0.9; transform: translateY(-1px); }
+    .btn-convert svg { width: 18px; height: 18px; stroke: #1A1A2E; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+
+    /* ── Progress ── */
+    .progress-section {
+      display: none;
+      margin-top: 20px;
+    }
+    .progress-section.visible { display: block; }
+
+    .progress-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .progress-label { font-size: 0.82rem; color: var(--text-muted); }
+    .progress-pct {
+      font-family: 'Syne', sans-serif;
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: var(--gold);
+    }
+
+    .progress-track {
+      height: 6px;
+      background: var(--border);
+      border-radius: 99px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--gold) 0%, #E8D5B7 100%);
+      border-radius: 99px;
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+
+    /* ── Status messages ── */
+    .status-msg {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      margin-top: 16px;
+      padding: 12px 16px;
+      border-radius: 10px;
+      font-size: 0.85rem;
+      font-weight: 500;
+    }
+    .status-msg.visible { display: flex; }
+    .status-msg.success { background: rgba(110,191,139,0.12); border: 1px solid rgba(110,191,139,0.3); color: var(--green); }
+    .status-msg.error   { background: rgba(191,110,110,0.12); border: 1px solid rgba(191,110,110,0.3); color: var(--red); }
+    .status-msg.info    { background: rgba(201,169,110,0.10); border: 1px solid rgba(201,169,110,0.2); color: var(--gold); }
+    .status-msg svg { flex-shrink: 0; width: 16px; height: 16px; }
+
+    /* ── Download btn ── */
+    .btn-download {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      width: 100%;
+      margin-top: 12px;
+      padding: 14px;
+      border: 1.5px solid var(--green);
+      border-radius: 12px;
+      background: rgba(110,191,139,0.08);
+      color: var(--green);
+      font-family: 'Syne', sans-serif;
+      font-size: 0.95rem;
+      font-weight: 700;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background 0.2s, transform 0.15s;
+      letter-spacing: 0.02em;
+    }
+    .btn-download.visible { display: flex; }
+    .btn-download:hover { background: rgba(110,191,139,0.15); transform: translateY(-1px); }
+    .btn-download svg { width: 16px; height: 16px; stroke: var(--green); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+    /* ── Footer ── */
+    footer {
+      margin-top: 36px;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      text-align: center;
+      opacity: 0.6;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 560px) {
+      .card { padding: 24px 20px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .ring-outer, .ring-inner, .orb-1, .orb-2 { animation: none; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="bg-orbs">
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+</div>
+
+<div class="page">
+  <header>
+    <div class="logo-ring">
+      <div class="ring ring-outer"></div>
+      <div class="ring ring-inner"></div>
+      <div class="ring-dot"></div>
+    </div>
+    <h1>Audio <span>8D</span> Studio</h1>
+    <p class="subtitle">Transforme n'importe quel son en expérience spatiale 8D</p>
+  </header>
+
+  <div class="card">
+
+    <!-- Zone de dépôt -->
+    <div class="dropzone" id="dropzone">
+      <input type="file" id="fileInput" accept=".mp3,.wav,.mp4,.mkv,.flac,.m4a,.aac,.ogg" />
+      <div class="dz-icon">
+        <svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+      </div>
+      <div class="dz-label">Dépose ton fichier ici</div>
+      <div class="dz-hint">ou clique pour parcourir</div>
+      <div class="dz-formats">MP3 · WAV · FLAC · M4A · AAC · OGG · MP4 · MKV</div>
+    </div>
+
+    <!-- Fichier sélectionné -->
+    <div class="file-info" id="fileInfo">
+      <div class="fi-icon">
+        <svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+      </div>
+      <span class="fi-name" id="fileName">—</span>
+      <button class="fi-remove" id="removeFile" title="Retirer">✕</button>
+    </div>
+
+    <!-- Bouton conversion -->
+    <button class="btn-convert" id="convertBtn" disabled>
+      <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      Lancer la conversion 8D
+    </button>
+
+    <!-- Progression -->
+    <div class="progress-section" id="progressSection">
+      <div class="progress-header">
+        <span class="progress-label" id="progressLabel">Traitement en cours…</span>
+        <span class="progress-pct" id="progressPct">0%</span>
+      </div>
+      <div class="progress-track">
+        <div class="progress-fill" id="progressFill"></div>
+      </div>
+    </div>
+
+    <!-- Message statut -->
+    <div class="status-msg" id="statusMsg">
+      <svg id="statusIcon" viewBox="0 0 24 24"></svg>
+      <span id="statusText"></span>
+    </div>
+
+    <!-- Bouton téléchargement -->
+    <a class="btn-download" id="downloadBtn" href="#" download="audio_8D.mp3">
+      <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Télécharger le fichier 8D
+    </a>
+
+  </div>
+
+  <footer>
+    Mets un casque pour l'expérience complète 🎧
+  </footer>
+</div>
+
+<script>
+  const dropzone    = document.getElementById('dropzone');
+  const fileInput   = document.getElementById('fileInput');
+  const fileInfo    = document.getElementById('fileInfo');
+  const fileName    = document.getElementById('fileName');
+  const removeFile  = document.getElementById('removeFile');
+  const convertBtn  = document.getElementById('convertBtn');
+  const progressSec = document.getElementById('progressSection');
+  const progressLbl = document.getElementById('progressLabel');
+  const progressPct = document.getElementById('progressPct');
+  const progressFil = document.getElementById('progressFill');
+  const statusMsg   = document.getElementById('statusMsg');
+  const statusIcon  = document.getElementById('statusIcon');
+  const statusText  = document.getElementById('statusText');
+  const downloadBtn = document.getElementById('downloadBtn');
+
+  let selectedFile = null;
+  let pollInterval = null;
+
+  // ── Drag & drop ──
+  dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('dragging'); });
+  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragging'));
+  dropzone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropzone.classList.remove('dragging');
+    const f = e.dataTransfer.files[0];
+    if (f) setFile(f);
+  });
+
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files[0]) setFile(fileInput.files[0]);
+  });
+
+  function setFile(f) {
+    selectedFile = f;
+    fileName.textContent = f.name;
+    fileInfo.classList.add('visible');
+    convertBtn.disabled = false;
+    resetUI();
+  }
+
+  removeFile.addEventListener('click', () => {
+    selectedFile = null;
+    fileInput.value = '';
+    fileInfo.classList.remove('visible');
+    convertBtn.disabled = true;
+    resetUI();
+  });
+
+  function resetUI() {
+    progressSec.classList.remove('visible');
+    statusMsg.classList.remove('visible', 'success', 'error', 'info');
+    downloadBtn.classList.remove('visible');
+    progressFil.style.width = '0%';
+  }
+
+  function showStatus(type, iconPath, text) {
+    statusMsg.className = `status-msg visible ${type}`;
+    statusIcon.innerHTML = iconPath;
+    statusText.textContent = text;
+  }
+
+  // ── Conversion ──
+  convertBtn.addEventListener('click', async () => {
+    if (!selectedFile) return;
+
+    convertBtn.disabled = true;
+    downloadBtn.classList.remove('visible');
+    progressSec.classList.add('visible');
+    progressFil.style.width = '0%';
+    progressPct.textContent = '0%';
+    progressLbl.textContent = 'Envoi du fichier…';
+    showStatus('info',
+      '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>',
+      'Traitement en cours, patiente un moment…'
+    );
+
+    const formData = new FormData();
+    formData.append('file', selectedFile);
+
+    let jobId;
+    try {
+      const res = await fetch('/convert', { method: 'POST', body: formData });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || 'Erreur inconnue');
+      jobId = data.job_id;
+    } catch (e) {
+      showStatus('error', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>', 'Erreur lors de l\'envoi : ' + e.message);
+      convertBtn.disabled = false;
+      return;
+    }
+
+    // ── Polling progression ──
+    pollInterval = setInterval(async () => {
+      try {
+        const res  = await fetch(`/progress/${jobId}`);
+        const data = await res.json();
+
+        const pct = data.progress || 0;
+        progressFil.style.width = pct + '%';
+        progressPct.textContent = pct + '%';
+
+        const labels = {
+          loading:    'Chargement du fichier audio…',
+          processing: 'Application de l\'effet 8D…',
+          saving:     'Finalisation et export…',
+          done:       'Terminé !',
+          error:      'Erreur',
+        };
+        progressLbl.textContent = labels[data.status] || 'Traitement…';
+
+        if (data.status === 'done') {
+          clearInterval(pollInterval);
+          showStatus('success', '<polyline stroke-linecap="round" stroke-linejoin="round" stroke-width="2" points="20 6 9 17 4 12"/>', 'Conversion réussie ! Ton fichier 8D est prêt.');
+          downloadBtn.href = `/download/${jobId}`;
+          downloadBtn.classList.add('visible');
+          convertBtn.disabled = false;
+        }
+
+        if (data.status === 'error') {
+          clearInterval(pollInterval);
+          showStatus('error', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>', 'Erreur : ' + (data.error || 'inconnue'));
+          convertBtn.disabled = false;
+        }
+
+      } catch (e) {
+        clearInterval(pollInterval);
+        showStatus('error', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>', 'Impossible de joindre le serveur.');
+        convertBtn.disabled = false;
+      }
+    }, 800);
+  });
+</script>
+</body>
+</html>

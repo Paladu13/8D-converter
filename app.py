@@ -15,34 +15,49 @@ import tempfile
 try:
     import audioop
 except ImportError:
+    def _unpack(data, width):
+        """Helper: unpack audio samples based on width (1=8bit, 2=16bit)."""
+        if width == 2:
+            count = len(data) // 2
+            return struct.unpack(f"<{count}h", data)
+        elif width == 1:
+            return list(data)  # bytes -> list of ints (already signed for 8-bit)
+        return []
+
+    def _pack(samples, width):
+        """Helper: pack samples back into bytes based on width."""
+        if width == 2:
+            samples = [max(-32768, min(32767, s)) for s in samples]
+            return struct.pack(f"<{len(samples)}h", *samples)
+        elif width == 1:
+            samples = [max(-128, min(127, s)) for s in samples]
+            return bytes(samples)
+        return b""
+
     class _audioop:
         @staticmethod
         def tostereo(data, width, lfactor, rfactor):
-            if width == 2:
-                count = len(data) // 2
-                samples = struct.unpack(f"<{count}h", data)
-                left = [max(-32768, min(32767, int(s * lfactor))) for s in samples]
-                right = [max(-32768, min(32767, int(s * rfactor))) for s in samples]
-                result = bytearray(len(data) * 2)
-                for i, (l, r) in enumerate(zip(left, right)):
-                    struct.pack_into("<hh", result, i * 4, l, r)
-                return bytes(result)
-            raise ValueError(f"Unsupported width: {width}")
+            samples = _unpack(data, width)
+            left = [max(-32768, min(32767, int(s * lfactor))) for s in samples]
+            right = [max(-32768, min(32767, int(s * rfactor))) for s in samples]
+            result = bytearray(len(samples) * 4)
+            for i, (l, r) in enumerate(zip(left, right)):
+                struct.pack_into("<hh", result, i * 4, l, r)
+            return bytes(result)
 
         @staticmethod
         def max(data, width):
-            if width == 2:
-                count = len(data) // 2
-                return max(abs(s) for s in struct.unpack(f"<{count}h", data))
-            return 0
+            samples = _unpack(data, width)
+            if not samples:
+                return 0
+            return max(abs(s) for s in samples)
 
         @staticmethod
         def avg(data, width):
-            if width == 2:
-                count = len(data) // 2
-                samples = struct.unpack(f"<{count}h", data)
-                return sum(samples) // count
-            return 0
+            samples = _unpack(data, width)
+            if not samples:
+                return 0
+            return sum(samples) // len(samples)
 
         @staticmethod
         def avgpp(data, width):
@@ -54,73 +69,56 @@ except ImportError:
 
         @staticmethod
         def cross(data, width):
-            if width == 2:
-                count = len(data) // 2
-                samples = struct.unpack(f"<{count}h", data)
-                crosses = 0
-                for i in range(1, len(samples)):
-                    if (samples[i-1] < 0 and samples[i] >= 0) or \
-                       (samples[i-1] >= 0 and samples[i] < 0):
-                        crosses += 1
-                return crosses
-            return 0
+            samples = _unpack(data, width)
+            crosses = 0
+            for i in range(1, len(samples)):
+                if (samples[i-1] < 0 and samples[i] >= 0) or \
+                   (samples[i-1] >= 0 and samples[i] < 0):
+                    crosses += 1
+            return crosses
 
         @staticmethod
         def mul(data, width, factor):
-            if width == 2:
-                count = len(data) // 2
-                samples = struct.unpack(f"<{count}h", data)
-                samples = [max(-32768, min(32767, int(s * factor))) for s in samples]
-                return struct.pack(f"<{count}h", *samples)
-            return data
+            samples = _unpack(data, width)
+            samples = [int(s * factor) for s in samples]
+            return _pack(samples, width)
 
         @staticmethod
         def bias(data, width, bias_val):
-            if width == 2:
-                count = len(data) // 2
-                samples = struct.unpack(f"<{count}h", data)
-                samples = [max(-32768, min(32767, s + bias_val)) for s in samples]
-                return struct.pack(f"<{count}h", *samples)
-            return data
+            samples = _unpack(data, width)
+            samples = [s + bias_val for s in samples]
+            return _pack(samples, width)
 
         @staticmethod
         def lin2lin(data, width, newwidth):
-            if width == newwidth:
-                return data
+            samples = _unpack(data, width)
             if width == 2 and newwidth == 1:
-                count = len(data) // 2
-                samples = struct.unpack(f"<{count}h", data)
-                samples = [max(-128, min(127, s >> 2)) for s in samples]
-                return struct.pack(f"<{count}b", *samples)
-            if width == 1 and newwidth == 2:
-                samples = [s - 128 if s > 127 else s for s in data]
-                samples = [max(-32768, min(32767, s << 2)) for s in samples]
-                return struct.pack(f"<{len(samples)}h", *samples)
-            return data
+                samples = [s >> 2 for s in samples]
+            elif width == 1 and newwidth == 2:
+                samples = [s << 2 for s in samples]
+            return _pack(samples, newwidth)
 
         @staticmethod
         def getsample(data, width, index):
-            if width == 2:
-                return struct.unpack_from("<h", data, index * 2)[0]
+            samples = _unpack(data, width)
+            if 0 <= index < len(samples):
+                return samples[index]
             return 0
 
         @staticmethod
         def add(data1, data2, width):
-            if width == 2:
-                count = min(len(data1), len(data2)) // 2
-                samples1 = struct.unpack(f"<{count}h", data1[:count*2])
-                samples2 = struct.unpack(f"<{count}h", data2[:count*2])
-                samples = [max(-32768, min(32767, s1 + s2)) for s1, s2 in zip(samples1, samples2)]
-                return struct.pack(f"<{count}h", *samples)
-            return data1
+            samples1 = _unpack(data1, width)
+            samples2 = _unpack(data2, width)
+            count = min(len(samples1), len(samples2))
+            samples = [samples1[i] + samples2[i] for i in range(count)]
+            return _pack(samples, width)
 
         @staticmethod
         def minmax(data, width):
-            if width == 2:
-                count = len(data) // 2
-                samples = struct.unpack(f"<{count}h", data)
-                return (min(samples), max(samples))
-            return (0, 0)
+            samples = _unpack(data, width)
+            if not samples:
+                return (0, 0)
+            return (min(samples), max(samples))
 
         @staticmethod
         def findfactor(data, reference):

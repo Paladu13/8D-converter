@@ -1,4 +1,5 @@
 flask>=3.0.0
 pydub>=0.25.1
 gunicorn>=22.0.0
-pyaudioop
+# Nécessaire pour Python >= 3.11 (audioop retiré de la stdlib)
+pyaudioop; python_version >= "3.11"

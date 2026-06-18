@@ -6,54 +6,41 @@ import time
 import glob
 import struct
 import sys
-from flask import Flask, request, jsonify, send_file, render_template
-from pydub import AudioSegment
-from pydub.utils import which
 import tempfile
 
-# ──────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────
 # Polyfill audioop pour Python 3.13+ (audioop retiré de la stdlib)
-# pydub en dépend, donc on fournit une implémentation minimaliste
-# ──────────────────────────────────────────────
+# DOIT être AVANT l'import de pydub, car pydub importe audioop
+# ──────────────────────────────────────────────────────────────
 try:
     import audioop
 except ImportError:
-    # Polyfill minimal de audioop pour pydub
     class _audioop:
         @staticmethod
         def tostereo(data, width, lfactor, rfactor):
-            """Convertit un échantillon mono en stéréo (implémentation simplifiée)."""
             if width == 2:
-                fmt = "<h"
                 count = len(data) // 2
                 samples = struct.unpack(f"<{count}h", data)
-                left = [int(s * lfactor) for s in samples]
-                right = [int(s * rfactor) for s in samples]
-                # Clamp
-                left = [max(-32768, min(32767, s)) for s in left]
-                right = [max(-32768, min(32767, s)) for s in right]
+                left = [max(-32768, min(32767, int(s * lfactor))) for s in samples]
+                right = [max(-32768, min(32767, int(s * rfactor))) for s in samples]
                 result = bytearray(len(data) * 2)
                 for i, (l, r) in enumerate(zip(left, right)):
                     struct.pack_into("<hh", result, i * 4, l, r)
                 return bytes(result)
-            else:
-                raise ValueError(f"Unsupported width: {width}")
+            raise ValueError(f"Unsupported width: {width}")
 
         @staticmethod
         def max(data, width):
             if width == 2:
                 count = len(data) // 2
-                fmt = f"<{count}h"
-                samples = struct.unpack(fmt, data)
-                return max(abs(s) for s in samples)
+                return max(abs(s) for s in struct.unpack(f"<{count}h", data))
             return 0
 
         @staticmethod
         def avg(data, width):
             if width == 2:
                 count = len(data) // 2
-                fmt = f"<{count}h"
-                samples = struct.unpack(fmt, data)
+                samples = struct.unpack(f"<{count}h", data)
                 return sum(samples) // count
             return 0
 
@@ -69,8 +56,7 @@ except ImportError:
         def cross(data, width):
             if width == 2:
                 count = len(data) // 2
-                fmt = f"<{count}h"
-                samples = struct.unpack(fmt, data)
+                samples = struct.unpack(f"<{count}h", data)
                 crosses = 0
                 for i in range(1, len(samples)):
                     if (samples[i-1] < 0 and samples[i] >= 0) or \
@@ -83,10 +69,8 @@ except ImportError:
         def mul(data, width, factor):
             if width == 2:
                 count = len(data) // 2
-                fmt = f"<{count}h"
-                samples = struct.unpack(fmt, data)
-                samples = [int(s * factor) for s in samples]
-                samples = [max(-32768, min(32767, s)) for s in samples]
+                samples = struct.unpack(f"<{count}h", data)
+                samples = [max(-32768, min(32767, int(s * factor))) for s in samples]
                 return struct.pack(f"<{count}h", *samples)
             return data
 
@@ -94,8 +78,7 @@ except ImportError:
         def bias(data, width, bias_val):
             if width == 2:
                 count = len(data) // 2
-                fmt = f"<{count}h"
-                samples = struct.unpack(fmt, data)
+                samples = struct.unpack(f"<{count}h", data)
                 samples = [max(-32768, min(32767, s + bias_val)) for s in samples]
                 return struct.pack(f"<{count}h", *samples)
             return data
@@ -104,17 +87,13 @@ except ImportError:
         def lin2lin(data, width, newwidth):
             if width == newwidth:
                 return data
-            # Conversion simple entre largeurs
             if width == 2 and newwidth == 1:
                 count = len(data) // 2
-                fmt = f"<{count}h"
-                samples = struct.unpack(fmt, data)
+                samples = struct.unpack(f"<{count}h", data)
                 samples = [max(-128, min(127, s >> 2)) for s in samples]
                 return struct.pack(f"<{count}b", *samples)
             if width == 1 and newwidth == 2:
-                samples = list(data)
-                # Correction pour les bytes signés
-                samples = [s - 128 if s > 127 else s for s in samples]
+                samples = [s - 128 if s > 127 else s for s in data]
                 samples = [max(-32768, min(32767, s << 2)) for s in samples]
                 return struct.pack(f"<{len(samples)}h", *samples)
             return data
@@ -128,6 +107,10 @@ except ImportError:
     audioop = _audioop()
     sys.modules['audioop'] = audioop
 
+# pydub doit être importé APRÈS le polyfill
+from flask import Flask, request, jsonify, send_file, render_template
+from pydub import AudioSegment
+from pydub.utils import which
 
 # --- Configuration de ffmpeg pour pydub ---
 ffmpeg_path = which("ffmpeg")

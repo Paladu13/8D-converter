@@ -21,10 +21,20 @@ import shutil
 import subprocess
 import threading
 import time
+import sys
 
 import requests
 
 from .audio_processor import UPLOAD_FOLDER
+
+
+def _log(job_id, msg):
+    """
+    Écrit dans stdout (donc visible dans les logs Render), avec le job_id
+    pour pouvoir suivre une requête précise. Le message renvoyé au client
+    est tronqué à 600 caractères, mais ICI on garde tout.
+    """
+    print(f"[spotify:{job_id}] {msg}", flush=True, file=sys.stdout)
 
 # Émuler ces clients yt-dlp (dans cet ordre) contourne le blocage anti-bot
 # YouTube rencontré depuis les IP de datacenter, sans nécessiter de cookies.
@@ -242,6 +252,7 @@ def process_spotify_download(job_id, spotify_url, spotify_jobs):
     stop_event = threading.Event()
 
     try:
+        _log(job_id, f"Démarrage : {spotify_url}")
         spotify_jobs[job_id] = {
             'status': 'downloading', 'progress': 5,
             'error': None, 'file_path': None
@@ -270,6 +281,7 @@ def process_spotify_download(job_id, spotify_url, spotify_jobs):
         # ── Étape 1 : métadonnées Spotify ──
         spotify_jobs[job_id]['step'] = 'metadata'
         artist, title = _get_spotify_metadata(spotify_url)
+        _log(job_id, f"Métadonnées : artist={artist!r} title={title!r}")
 
         if artist and title:
             safe_name = sanitize_filename(f"{artist} - {title}")
@@ -288,12 +300,14 @@ def process_spotify_download(job_id, spotify_url, spotify_jobs):
                     except Exception: pass
 
                 downloaded_file, last_output = _download_ytdlp(query, output_dir, tpl)
+                _log(job_id, f"yt-dlp tentative {q_idx + 1} ({query}) :\n{last_output}")
 
                 if downloaded_file:
                     break
                 if _is_bot_check_error(last_output):
                     # YouTube bloque cette IP : inutile d'insister avec d'autres
                     # requêtes, on bascule directement sur le repli spotdl.
+                    _log(job_id, "Blocage anti-bot YouTube détecté, abandon de yt-dlp.")
                     break
 
         # ── Étape 3 : repli spotdl (Piped / SoundCloud / Bandcamp) ──
@@ -304,11 +318,13 @@ def process_spotify_download(job_id, spotify_url, spotify_jobs):
                 except Exception: pass
 
             downloaded_file, last_output = _download_spotdl_fallback(spotify_url, output_dir)
+            _log(job_id, f"spotdl fallback :\n{last_output}")
 
         stop_event.set()
 
         if not downloaded_file:
             titre_detecte = f"{artist} - {title}" if artist and title else "non récupéré"
+            _log(job_id, f"ÉCHEC TOTAL. Titre détecté : {titre_detecte}\nDernière sortie complète :\n{last_output}")
             raise RuntimeError(
                 f"Impossible de télécharger depuis ce serveur.\n"
                 f"Titre détecté : {titre_detecte}\n"

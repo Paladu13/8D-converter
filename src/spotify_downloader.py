@@ -179,45 +179,63 @@ def _download_ytdlp(query, output_dir, output_template, timeout=180):
     return None, output
 
 
-def _download_spotdl_fallback(spotify_url, output_dir, timeout=300):
+def _download_spotdl_fallback(spotify_url, output_dir, timeout_per_provider=90):
     """
-    Repli via spotdl avec plusieurs fournisseurs audio alternatifs à YouTube
-    (qui est bloqué sur les IP cloud), et un matching permissif pour éviter
-    les faux négatifs ("LookupError: No results found") quand un résultat
-    correct existe mais ne passe pas le scoring strict de spotdl par défaut.
+    Repli via spotdl, UN SOUS-PROCESSUS PAR FOURNISSEUR.
+
+    Important : spotdl, quand on lui passe plusieurs fournisseurs avec
+    `--audio a b c`, les essaie en interne dans une boucle SANS try/except
+    entre eux. Si un fournisseur lève une exception non gérée (ex: Piped,
+    qui tape en dur sur une seule instance piped.video souvent injoignable
+    depuis les IP cloud -> JSONDecodeError), toute la recherche s'arrête et
+    les fournisseurs suivants ne sont jamais tentés.
+
+    En lançant nous-mêmes un sous-processus spotdl distinct par fournisseur,
+    un crash sur l'un n'empêche pas d'essayer les suivants.
     """
-    cmd = [
-        'spotdl', 'download', spotify_url,
-        '--output', os.path.join(output_dir, '{artist} - {title}.{ext}'),
-        '--format', 'mp3', '--bitrate', '192k',
-        '--overwrite', 'skip',
-        '--audio', *SPOTDL_FALLBACK_PROVIDERS,
-        '--dont-filter-results',
-    ]
-    proc = subprocess.Popen(
-        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-        text=True, cwd=output_dir
-    )
-    lines = []
-    for line in proc.stdout:
-        line = line.rstrip()
-        if line:
-            lines.append(line)
+    all_output = []
+    downloaded_file = None
 
-    try:
-        proc.wait(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        lines.append("[Timeout spotdl]")
+    for provider in SPOTDL_FALLBACK_PROVIDERS:
+        all_output.append(f"--- fournisseur : {provider} ---")
 
-    last_output = '\n'.join(lines)
+        cmd = [
+            'spotdl', 'download', spotify_url,
+            '--output', os.path.join(output_dir, '{artist} - {title}.{ext}'),
+            '--format', 'mp3', '--bitrate', '192k',
+            '--overwrite', 'skip',
+            '--audio', provider,
+            '--dont-filter-results',
+        ]
+        proc = subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, cwd=output_dir
+        )
+        for line in proc.stdout:
+            line = line.rstrip()
+            if line:
+                all_output.append(line)
 
-    audio_files = []
-    for pat in ('*.mp3', '*.wav', '*.flac', '*.m4a', '*.ogg', '*.aac'):
-        audio_files.extend(glob.glob(os.path.join(output_dir, pat)))
+        try:
+            proc.wait(timeout=timeout_per_provider)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            all_output.append(f"[Timeout spotdl/{provider}]")
 
-    downloaded_file = max(audio_files, key=os.path.getmtime) if audio_files else None
-    return downloaded_file, last_output
+        audio_files = []
+        for pat in ('*.mp3', '*.wav', '*.flac', '*.m4a', '*.ogg', '*.aac'):
+            audio_files.extend(glob.glob(os.path.join(output_dir, pat)))
+
+        if audio_files:
+            downloaded_file = max(audio_files, key=os.path.getmtime)
+            break  # ce fournisseur a réussi, inutile d'essayer les suivants
+
+        # Rien de valide trouvé avec ce fournisseur : on nettoie avant le suivant
+        for f in glob.glob(os.path.join(output_dir, "*")):
+            try: os.remove(f)
+            except Exception: pass
+
+    return downloaded_file, '\n'.join(all_output)
 
 
 def process_spotify_download(job_id, spotify_url, spotify_jobs):

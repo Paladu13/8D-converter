@@ -231,6 +231,23 @@ def _download_single_track(track_name, output_dir, job_id=None, spotify_jobs=Non
     if job_id and spotify_jobs:
         progress_hooks = [_make_progress_hook(track_name, job_id, spotify_jobs)]
 
+    # ── Cookies YouTube (optionnel, pour Render/datacenter) ──
+    # Les cookies aident à contourner les blocages YouTube sur les IPs de datacenter.
+    # Générer avec : cat cookies.txt | base64 | pbcopy  (macOS)
+    #              : cat cookies.txt | base64 | clip    (Windows)
+    youtube_cookies_b64 = os.environ.get("YOUTUBE_COOKIES", "")
+    cookies_file = None
+    if youtube_cookies_b64:
+        try:
+            import base64, tempfile
+            cookies_data = base64.b64decode(youtube_cookies_b64)
+            cookies_file = tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8')
+            cookies_file.write(cookies_data.decode('utf-8'))
+            cookies_file.close()
+            _log(job_id, f"Cookies YouTube chargés depuis YOUTUBE_COOKIES")
+        except Exception as e:
+            _log(job_id, f"Erreur chargement cookies YouTube: {e}")
+
     ydl_opts = {
         'format': 'bestaudio/best',
         'outtmpl': os.path.join(output_dir, f'{safe_name}.%(ext)s'),
@@ -245,20 +262,38 @@ def _download_single_track(track_name, output_dir, job_id=None, spotify_jobs=Non
             'preferredcodec': 'mp3',
             'preferredquality': '192',
         }],
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['web', 'android'],
+            }
+        },
     }
+    if cookies_file:
+        ydl_opts['cookiefile'] = cookies_file.name
 
     for attempt in range(1, 4):
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                _log(job_id, f"Recherche YouTube pour : {track_name}")
                 info = ydl.extract_info(f"ytsearch1:{track_name}", download=True)
-                if 'entries' in info and len(info['entries']) > 0:
-                    # Comme le standalone : on fait confiance à yt-dlp
-                    _log(job_id, f"✓ Terminé : {track_name}")
+                if info and 'entries' in info and len(info['entries']) > 0:
+                    entry_title = info['entries'][0].get('title', '?')
+                    _log(job_id, f"✓ {track_name} → trouvé: {entry_title}")
                     return True
+                else:
+                    _log(job_id, f"Aucun résultat YouTube pour: {track_name}")
         except Exception as e:
-            _log(job_id, f"Essai {attempt}/3 pour {track_name} : {e}")
+            _log(job_id, f"Essai {attempt}/3 pour {track_name} : {type(e).__name__}: {e}")
+            traceback.print_exc()
             if attempt < 3:
-                time.sleep(1)
+                time.sleep(2)
+
+    # Nettoyer le fichier temporaire des cookies
+    if cookies_file:
+        try:
+            os.unlink(cookies_file.name)
+        except Exception:
+            pass
 
     return False
 

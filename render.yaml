@@ -7,8 +7,21 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.0"
-      # Optionnel : cookies YouTube en base64 (cookies.txt format Netscape)
-      # Générez avec : cat cookies.txt | base64 | pbcopy
-      # - key: YOUTUBE_COOKIES
-      #   value: "<votre-base64-ici>"
-      # Alternative : uploader le fichier cookies.txt via l'interface web
+
+# ═══════════════════════════════════════════════════════════════
+# IMPORTANT : Cookies YouTube pour Render (datacenter)
+# ═══════════════════════════════════════════════════════════════
+# YouTube bloque les IPs de datacenter (Render, Heroku, etc.)
+# Solution : exporter ses cookies YouTube et les passer en variable.
+#
+# 1. Installer l'extension "Get cookies.txt" (Netscape format) sur Chrome/Firefox
+# 2. Aller sur youtube.com, cliquer sur l'icône de l'extension → Export
+# 3. Convertir en base64 :
+#    macOS/Linux : cat cookies.txt | base64 | pbcopy
+#    Windows PowerShell : [Convert]::ToBase64String([IO.File]::ReadAllBytes("cookies.txt")) | Set-Clipboard
+# 4. Coller le résultat ci-dessous :
+#
+# - key: YOUTUBE_COOKIES
+#   value: ""
+#
+# Conseil : les cookies expirent, il faudra les renouveler tous les mois environ.

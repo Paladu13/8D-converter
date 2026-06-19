@@ -17,13 +17,23 @@ def _log(job_id, msg):
 
 
 def _check_deps():
-    """Vérifie les dépendances requises."""
+    """Vérifie et installe les dépendances requises."""
     missing = []
     for tool in ["ffmpeg", "spotdl"]:
         if not shutil.which(tool):
             missing.append(tool)
     if missing:
         raise RuntimeError(f"Outils manquants : {', '.join(missing)}")
+    
+    # spotdl nécessite Deno pour les téléchargements YouTube Music
+    # On lance spotdl --download-deno si le plugin Deno n'est pas présent
+    try:
+        subprocess.run(
+            ['spotdl', '--download-deno'],
+            capture_output=True, text=True, timeout=30
+        )
+    except Exception:
+        pass  # silencieux, pas bloquant
 
 
 def _get_metadata(spotify_url):

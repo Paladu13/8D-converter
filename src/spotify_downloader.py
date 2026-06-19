@@ -220,24 +220,23 @@ def _download_single_track(track_name, output_dir, job_id=None, spotify_jobs=Non
     """
     safe_name = sanitize_filename(track_name)
     expected_mp3 = os.path.join(output_dir, f"{safe_name}.mp3")
-    output_template = os.path.join(output_dir, f"{safe_name}.%(ext)s")
 
     # ── Vérifier si déjà téléchargé ──
     if os.path.exists(expected_mp3):
         _log(job_id, f"Déjà présent, ignoré : {track_name}")
         return expected_mp3
 
+    # Compter les MP3 avant le téléchargement
+    mp3_before = set(glob.glob(os.path.join(output_dir, "*.mp3")))
+
     # Construire les hooks de progression
     progress_hooks = []
     if job_id and spotify_jobs:
         progress_hooks = [_make_progress_hook(track_name, job_id, spotify_jobs)]
 
-    # Extraire juste le nom du morceau (sans artiste) pour la recherche YouTube
-    search_query = track_name.replace(' - ', ' ').strip()
-
     ydl_opts = {
         'format': 'bestaudio/best',
-        'outtmpl': output_template,
+        'outtmpl': os.path.join(output_dir, f'{safe_name}.%(ext)s'),
         'default_search': 'ytsearch',
         'noplaylist': True,
         'quiet': True,
@@ -249,30 +248,27 @@ def _download_single_track(track_name, output_dir, job_id=None, spotify_jobs=Non
             'preferredcodec': 'mp3',
             'preferredquality': '192',
         }],
-        'extractor_args': {
-            'youtube': {
-                'player_client': ['android', 'tv', 'web'],
-            }
-        },
     }
 
     for attempt in range(1, 4):  # 3 tentatives max
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(f"ytsearch1:{search_query}", download=True)
+                info = ydl.extract_info(f"ytsearch1:{track_name}", download=True)
                 if 'entries' in info and len(info['entries']) > 0:
-                    # Vérifier le fichier par son chemin exact
+                    # Attendre un peu que ffmpeg finisse la conversion
+                    time.sleep(0.5)
+                    # Chercher les nouveaux MP3 créés
+                    mp3_after = set(glob.glob(os.path.join(output_dir, "*.mp3")))
+                    new_mp3 = mp3_after - mp3_before
+                    if new_mp3:
+                        return list(new_mp3)[0]
+                    # Fallback: vérifier le chemin attendu
                     if os.path.exists(expected_mp3):
                         return expected_mp3
-                    # Fallback: attendre 1s que ffmpeg finisse la conversion
-                    time.sleep(1)
-                    if os.path.exists(expected_mp3):
-                        return expected_mp3
-                    # Dernier recours: chercher le .mp3 le plus récent
-                    all_mp3 = sorted(glob.glob(os.path.join(output_dir, "*.mp3")), key=os.path.getmtime)
-                    for mp3 in reversed(all_mp3):
-                        if abs(time.time() - os.path.getmtime(mp3)) < 30:
-                            return mp3
+                    # Dernier recours: prendre le MP3 le plus récent
+                    all_mp3 = sorted(glob.glob(os.path.join(output_dir, "*.mp3")), key=os.path.getmtime, reverse=True)
+                    if all_mp3:
+                        return all_mp3[0]
                     return None
         except Exception as e:
             _log(job_id, f"Essai {attempt}/3 pour {track_name} : {e}")

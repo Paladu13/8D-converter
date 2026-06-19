@@ -1,13 +1,18 @@
 """
-Module de téléchargement Spotify — version optimisée.
+Module de téléchargement Spotify.
 
-Stratégie optimisée :
-  1. Métadonnées Spotify via API embed (rapide).
-  2. Lancement PARALLÈLE de yt-dlp ET spotdl simultanément.
-     - yt-dlp avec format bestaudio (pas de re-encoding ffmpeg lent).
-     - spotdl avec seulement les providers les plus rapides (soundcloud, youtube-music).
-  3. Dès que l'un des deux termine, on arrête l'autre (race).
-  4. Si aucun ne marche, dernier recours yt-dlp avec clients alternatifs (parallélisé aussi).
+Stratégie (pensée pour les IP cloud type Render, qui se font bloquer par YouTube) :
+  1. Métadonnées Spotify (artiste / titre) via l'API embed publique de Spotify.
+  2. yt-dlp ytsearch sur YouTube en émulant le client Android/TV, ce qui contourne
+     dans la majorité des cas le blocage anti-bot ("Sign in to confirm you're not
+     a bot") que subissent les IP de datacenter. Dès qu'un blocage de ce type est
+     détecté, on arrête immédiatement les tentatives YouTube (inutile d'insister).
+  3. Repli spotdl avec plusieurs fournisseurs audio alternatifs (SoundCloud, Bandcamp,
+     Piped, YouTube Music, YouTube — essayés un par un pour éviter qu'un crash
+     spotdl sur un fournisseur n'empêche les suivants), et un matching permissif
+     (--dont-filter-results).
+  4. Dernier recours : yt-dlp avec combinaisons de clients alternatives, et avec
+     --cookies-from-browser si disponible.
 """
 import os
 import re
@@ -18,8 +23,6 @@ import subprocess
 import threading
 import time
 import sys
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from functools import lru_cache
 
 import requests
 
@@ -32,8 +35,8 @@ def _log(job_id, msg):
 
 YTDLP_PLAYER_CLIENTS = "android,tv,web"
 
-# Providers les plus fiables seulement (suppression de piped, bandcamp = trop lents/peu fiables)
-SPOTDL_FAST_PROVIDERS = ["soundcloud", "youtube-music"]
+SPOTDL_FALLBACK_PROVIDERS = ["soundcloud", "bandcamp", "piped"]
+SPOTDL_LAST_RESORT_PROVIDERS = ["youtube-music", "youtube"]
 
 _BOT_CHECK_MARKERS = (
     "sign in to confirm",
@@ -62,9 +65,23 @@ def _is_bot_check_error(output):
     return any(marker in low for marker in _BOT_CHECK_MARKERS)
 
 
-@lru_cache(maxsize=32)
+def _simulate_progress(job_id, spotify_jobs, stop_event, start_pct=10, end_pct=75, duration=90):
+    steps = 40
+    interval = duration / steps
+    increment = (end_pct - start_pct) / steps
+    for i in range(steps):
+        if stop_event.is_set():
+            return
+        time.sleep(interval)
+        if stop_event.is_set():
+            return
+        new_pct = int(start_pct + increment * (i + 1))
+        if spotify_jobs.get(job_id, {}).get('status') == 'downloading':
+            spotify_jobs[job_id]['progress'] = min(new_pct, end_pct)
+
+
 def _get_spotify_metadata(spotify_url):
-    """Récupère artiste + titre via l'API embed publique de Spotify (avec cache)."""
+    """Récupère artiste + titre via l'API embed publique de Spotify."""
     try:
         match = re.search(r'track/([A-Za-z0-9]+)', spotify_url)
         if not match:
@@ -73,7 +90,7 @@ def _get_spotify_metadata(spotify_url):
 
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
         url = f'https://open.spotify.com/embed/track/{track_id}'
-        r = requests.get(url, headers=headers, timeout=10)
+        r = requests.get(url, headers=headers, timeout=15)
         r.raise_for_status()
 
         for m in re.finditer(
@@ -97,11 +114,11 @@ def _get_spotify_metadata(spotify_url):
     except Exception:
         pass
 
-    # Fallback rapide: spotdl save avec timeout court
+    # Fallback: spotdl save
     try:
         result = subprocess.run(
             ['spotdl', 'save', spotify_url, '--save-file', '/dev/stdout'],
-            capture_output=True, text=True, timeout=15
+            capture_output=True, text=True, timeout=30
         )
         if result.returncode == 0 and result.stdout.strip():
             data = json.loads(result.stdout)
@@ -117,32 +134,20 @@ def _get_spotify_metadata(spotify_url):
     return None, None
 
 
-def _download_ytdlp(query, output_dir, output_template, timeout=90, player_clients=None):
+def _download_ytdlp(query, output_dir, output_template, timeout=180, player_clients=None):
     """
-    Télécharge via yt-dlp (optimisé : format bestaudio sans re-encoding).
-    Retourne (chemin_audio_ou_None, sortie_texte).
+    Télécharge via yt-dlp. Retourne (chemin_mp3_ou_None, sortie_texte).
     """
     clients = player_clients or YTDLP_PLAYER_CLIENTS
-    
-    # Utiliser bestaudio directement sans --extract-audio pour éviter le re-encoding ffmpeg
-    # On récupère le meilleur format audio (m4a/opus natif) et on le convertit en mp3 ensuite
-    # C'est plus rapide car pas de re-encoding audio in-place
     cmd = [
         'yt-dlp',
         '--no-playlist',
-        '--no-warnings',
-        # Format: bestaudio qui est déjà de l'audio (pas vidéo)
-        '-f', 'bestaudio[ext=m4a]/bestaudio/best',
         '--extract-audio',
         '--audio-format', 'mp3',
-        '--audio-quality', '0',  # Meilleure qualité (pas de re-encoding lent)
+        '--audio-quality', '192K',
         '--extractor-args', f'youtube:player_client={clients}',
         '--output', output_template,
-        '--socket-timeout', '30',
-        '--retries', '3',
-        '--fragment-retries', '3',
-        '--no-check-certificate',
-        '--no-cache-dir',
+        '--no-warnings',
         query
     ]
 
@@ -150,11 +155,12 @@ def _download_ytdlp(query, output_dir, output_template, timeout=90, player_clien
     if cookies_path and os.path.exists(cookies_path):
         cmd += ['--cookies', cookies_path]
     else:
-        for browser in ('chrome', 'brave', 'edge'):
+        # Tentative avec cookies-from-browser (chrome/edge/brave)
+        for browser in ('chrome', 'brave', 'edge', 'opera', 'chromium'):
             try:
                 check = subprocess.run(
                     ['yt-dlp', '--cookies-from-browser', browser, '--version'],
-                    capture_output=True, text=True, timeout=5
+                    capture_output=True, text=True, timeout=10
                 )
                 if check.returncode == 0:
                     cmd += ['--cookies-from-browser', browser]
@@ -179,15 +185,22 @@ def _download_ytdlp(query, output_dir, output_template, timeout=90, player_clien
     return None, output
 
 
-def _download_spotdl_fast(spotify_url, output_dir, timeout=60):
+def _download_spotdl_fallback(spotify_url, output_dir, timeout_per_provider=90):
     """
-    Repli spotdl rapide : essaie plusieurs providers en parallèle.
-    Beaucoup plus rapide que l'approche séquentielle précédente.
-    """
-    downloaded_file = None
-    all_output = []
+    Repli via spotdl, un sous-processus par fournisseur.
 
-    def try_provider(provider):
+    Certains fournisseurs (notamment Piped) peuvent faire crasher spotdl
+    avec une IndexError interne. On capture stdout+stderr et on gère les
+    exceptions proprement pour ne pas bloquer les fournisseurs suivants.
+    """
+    all_output = []
+    downloaded_file = None
+
+    providers = SPOTDL_FALLBACK_PROVIDERS + SPOTDL_LAST_RESORT_PROVIDERS
+
+    for provider in providers:
+        all_output.append(f"--- fournisseur : {provider} ---")
+
         cmd = [
             'spotdl', 'download', spotify_url,
             '--output', os.path.join(output_dir, '{artist} - {title}.{ext}'),
@@ -195,106 +208,56 @@ def _download_spotdl_fast(spotify_url, output_dir, timeout=60):
             '--overwrite', 'skip',
             '--audio', provider,
             '--dont-filter-results',
-            '--log-level', 'WARNING',
+            '--log-level', 'DEBUG',
         ]
+
+        effective_timeout = timeout_per_provider
+        if provider in ("youtube", "youtube-music"):
+            effective_timeout = timeout_per_provider + 60
+
         try:
             proc = subprocess.Popen(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 text=True, cwd=output_dir
             )
-            stdout_data, stderr_data = proc.communicate(timeout=timeout)
-            return proc.returncode, provider, stdout_data, stderr_data
+            stdout_data, stderr_data = proc.communicate(timeout=effective_timeout)
+            for line in stdout_data.splitlines():
+                line = line.rstrip()
+                if line:
+                    all_output.append(line)
+            for line in stderr_data.splitlines():
+                line = line.rstrip()
+                if line:
+                    all_output.append(f"[stderr] {line}")
         except subprocess.TimeoutExpired:
             proc.kill()
             proc.wait()
-            return -1, provider, '', '[Timeout]'
+            all_output.append(f"[Timeout spotdl/{provider}]")
         except Exception as exc:
-            return -1, provider, '', f'[Exception] {exc}'
+            all_output.append(f"[Exception spotdl/{provider}] {exc}")
 
-    # Lancer tous les providers EN PARALLÈLE
-    with ThreadPoolExecutor(max_workers=len(SPOTDL_FAST_PROVIDERS)) as executor:
-        futures = {
-            executor.submit(try_provider, provider): provider
-            for provider in SPOTDL_FAST_PROVIDERS
-        }
+        audio_files = []
+        for pat in ('*.mp3', '*.wav', '*.flac', '*.m4a', '*.ogg', '*.aac'):
+            audio_files.extend(glob.glob(os.path.join(output_dir, pat)))
 
-        for future in as_completed(futures):
-            retcode, provider, stdout, stderr = future.result()
-            provider_label = f"[spotdl/{provider}]"
-            all_output.append(f"{provider_label} returncode={retcode}")
+        if audio_files:
+            downloaded_file = max(audio_files, key=os.path.getmtime)
+            break
 
-            if stderr:
-                for line in stderr.splitlines():
-                    if line.strip():
-                        all_output.append(f"{provider_label} [stderr] {line.strip()}")
-
-            # Vérifier si un fichier a été créé
-            audio_files = []
-            for pat in ('*.mp3', '*.wav', '*.flac', '*.m4a', '*.ogg'):
-                audio_files.extend(glob.glob(os.path.join(output_dir, pat)))
-
-            if audio_files:
-                # Trouver le fichier le plus récent correspondant à ce provider
-                for f in audio_files:
-                    fname = os.path.basename(f)
-                    # Ignorer les fichiers temporaires
-                    if not fname.startswith('.'):
-                        if downloaded_file is None or os.path.getmtime(f) > os.path.getmtime(downloaded_file):
-                            downloaded_file = f
-
-    return downloaded_file, '\n'.join(all_output)
-
-
-def _download_ytdlp_last_resort(job_id, spotify_jobs, artist, title, output_dir, tpl):
-    """
-    Dernier recours : essaie plusieurs configurations client yt-dlp EN PARALLÈLE.
-    """
-    alternate_configs = [
-        ("web",),
-        ("android",),
-        ("tv",),
-        ("android,web",),
-        ("tv,web",),
-        ("web,tv,android",),
-    ]
-
-    def try_client(clients_tuple):
-        clients_str = ",".join(clients_tuple)
-        # Nettoyer le dossier pour cette tentative
         for f in glob.glob(os.path.join(output_dir, "*")):
             try:
                 os.remove(f)
             except Exception:
                 pass
 
-        query = f"ytsearch1:{artist} - {title}"
-        downloaded, output = _download_ytdlp(
-            query, output_dir, tpl, timeout=60,
-            player_clients=clients_str
-        )
-        if downloaded:
-            return downloaded, clients_str, output
-        return None, clients_str, output
-
-    results = []
-    with ThreadPoolExecutor(max_workers=min(3, len(alternate_configs))) as executor:
-        futures = {executor.submit(try_client, cfg): cfg for cfg in alternate_configs}
-        
-        for future in as_completed(futures):
-            downloaded, clients_str, output = future.result()
-            results.append((downloaded, clients_str, output))
-            if downloaded:
-                # Annuler les autres futures
-                for f in futures:
-                    f.cancel()
-                return downloaded, output
-
-    return None, '\n'.join([f"[{cs}] {out[:200]}" for dl, cs, out in results if not dl])
+    return downloaded_file, '\n'.join(all_output)
 
 
 def process_spotify_download(job_id, spotify_url, spotify_jobs):
+    stop_event = threading.Event()
+
     try:
-        _log(job_id, f"Démarrage optimisé : {spotify_url}")
+        _log(job_id, f"Démarrage : {spotify_url}")
         spotify_jobs[job_id] = {
             'status': 'downloading', 'progress': 5,
             'error': None, 'file_path': None
@@ -309,13 +272,19 @@ def process_spotify_download(job_id, spotify_url, spotify_jobs):
 
         spotify_jobs[job_id]['progress'] = 10
 
+        progress_thread = threading.Thread(
+            target=_simulate_progress,
+            args=(job_id, spotify_jobs, stop_event, 10, 75, 120),
+            daemon=True
+        )
+        progress_thread.start()
+
         downloaded_file = None
         last_output = ''
         artist, title = None, None
 
-        # Étape 1 : métadonnées (rapide, ~1-2s)
+        # Étape 1 : métadonnées Spotify
         spotify_jobs[job_id]['step'] = 'metadata'
-        spotify_jobs[job_id]['progress'] = 12
         artist, title = _get_spotify_metadata(spotify_url)
         _log(job_id, f"Métadonnées : artist={artist!r} title={title!r}")
 
@@ -323,98 +292,97 @@ def process_spotify_download(job_id, spotify_url, spotify_jobs):
             safe_name = sanitize_filename(f"{artist} - {title}")
             tpl = os.path.join(output_dir, f"{safe_name}.%(ext)s")
 
-            # Étape 2 : Lancer yt-dlp ET spotdl EN PARALLÈLE (le premier qui gagne)
-            spotify_jobs[job_id]['step'] = 'parallel-download'
-            spotify_jobs[job_id]['progress'] = 20
+            queries = [
+                f"ytsearch1:{artist} - {title}",
+                f"ytsearch1:{artist} {title} official audio",
+                f"ytsearch1:{title} {artist} lyrics",
+            ]
 
-            # Requête yt-dlp unique et optimisée
-            query = f"ytsearch1:{artist} - {title} official audio"
-
-            def run_ytdlp():
-                # Nettoyage de départ
+            for q_idx, query in enumerate(queries):
+                spotify_jobs[job_id]['step'] = f'ytdlp-search-{q_idx + 1}'
                 for f in glob.glob(os.path.join(output_dir, "*")):
-                    try: os.remove(f)
-                    except: pass
-                dl, _ = _download_ytdlp(query, output_dir, tpl, timeout=60)
-                return dl
+                    try:
+                        os.remove(f)
+                    except Exception:
+                        pass
 
-            def run_spotdl():
-                dl, _ = _download_spotdl_fast(spotify_url, output_dir, timeout=60)
-                return dl
+                downloaded_file, last_output = _download_ytdlp(query, output_dir, tpl)
+                _log(job_id, f"yt-dlp tentative {q_idx + 1} ({query}) :\n{last_output}")
 
-            # Lancer les deux en parallèle, timeout total 70s (un peu plus que les timeouts individuels)
-            with ThreadPoolExecutor(max_workers=2) as executor:
-                yt_future = executor.submit(run_ytdlp)
-                sd_future = executor.submit(run_spotdl)
+                if downloaded_file:
+                    break
+                if _is_bot_check_error(last_output):
+                    _log(job_id, "Blocage anti-bot YouTube détecté, abandon de yt-dlp.")
+                    break
 
-                # Attendre le premier résultat, ou les deux
-                done_set = set()
-                total_timeout = 75
-                start = time.time()
+        # Étape 2 : repli spotdl
+        if not downloaded_file:
+            spotify_jobs[job_id]['step'] = 'spotdl-fallback'
+            for f in glob.glob(os.path.join(output_dir, "*")):
+                try:
+                    os.remove(f)
+                except Exception:
+                    pass
 
-                while len(done_set) < 2 and (time.time() - start) < total_timeout:
-                    # Vérifier si yt-dlp a déjà un fichier
-                    if yt_future.done() and 'ytdlp' not in done_set:
-                        dl = yt_future.result()
-                        if dl:
-                            downloaded_file = dl
-                            # Annuler spotdl immédiatement
-                            sd_future.cancel()
-                            _log(job_id, "yt-dlp a gagné la course !")
-                            break
-                        done_set.add('ytdlp')
+            downloaded_file, last_output = _download_spotdl_fallback(spotify_url, output_dir)
+            _log(job_id, f"spotdl fallback :\n{last_output}")
 
-                    if sd_future.done() and 'spotdl' not in done_set:
-                        dl = sd_future.result()
-                        if dl:
-                            downloaded_file = dl
-                            yt_future.cancel()
-                            _log(job_id, "spotdl a gagné la course !")
-                            break
-                        done_set.add('spotdl')
-
-                    time.sleep(0.2)
-
-                # Si on est sorti sans résultat
-                if not downloaded_file:
-                    # Attendre les éventuels résultats différés
-                    for f in (yt_future, sd_future):
-                        if not f.done():
-                            try:
-                                dl = f.result(timeout=10)
-                                if dl:
-                                    downloaded_file = dl
-                                    break
-                            except Exception:
-                                pass
-
-            _log(job_id, f"Résultat course parallèle : {'réussi' if downloaded_file else 'échoué'}")
-
-        # Étape 3 : Dernier recours parallélisé
+        # Étape 3 : dernier recours yt-dlp avec clients alternatifs
         if not downloaded_file and artist and title:
             spotify_jobs[job_id]['step'] = 'ytdlp-last-resort'
-            spotify_jobs[job_id]['progress'] = 50
-            _log(job_id, "Tentative dernier recours yt-dlp avec clients alternatifs...")
+            _log(job_id, "Spotdl a échoué, tentative yt-dlp avec clients alternatifs...")
 
             safe_name = sanitize_filename(f"{artist} - {title}")
             tpl = os.path.join(output_dir, f"{safe_name}.%(ext)s")
 
-            downloaded_file, last_output = _download_ytdlp_last_resort(
-                job_id, spotify_jobs, artist, title, output_dir, tpl
-            )
+            alternate_client_configs = [
+                ("web",),
+                ("android",),
+                ("tv",),
+                ("android,web",),
+                ("tv,web",),
+                ("web,tv,android",),
+            ]
 
-            _log(job_id, f"Résultat dernier recours : {'réussi' if downloaded_file else 'échoué'}")
+            for clients_tuple in alternate_client_configs:
+                for f in glob.glob(os.path.join(output_dir, "*")):
+                    try:
+                        os.remove(f)
+                    except Exception:
+                        pass
+
+                clients_str = ",".join(clients_tuple)
+                spotify_jobs[job_id]['step'] = f'ytdlp-alt-{clients_str}'
+
+                query = f"ytsearch1:{artist} - {title}"
+                downloaded_file, alt_output = _download_ytdlp(
+                    query, output_dir, tpl, timeout=120,
+                    player_clients=clients_str
+                )
+
+                _log(job_id, f"yt-dlp {clients_str} :\n{alt_output}")
+                if downloaded_file:
+                    last_output = alt_output
+                    break
+
+                if _is_bot_check_error(alt_output):
+                    _log(job_id, f"Blocage anti-bot avec {clients_str}, essai suivant...")
+                    continue
+
+            _log(job_id, f"Résultat yt-dlp dernier recours : {'réussi' if downloaded_file else 'échoué'}")
+
+        stop_event.set()
 
         if not downloaded_file:
             titre_detecte = f"{artist} - {title}" if artist and title else "non récupéré"
-            _log(job_id, f"ÉCHEC TOTAL. Titre détecté : {titre_detecte}")
+            _log(job_id, f"ÉCHEC TOTAL. Titre détecté : {titre_detecte}\nDernière sortie complète :\n{last_output}")
             raise RuntimeError(
                 f"Impossible de télécharger depuis ce serveur.\n"
                 f"Titre détecté : {titre_detecte}\n"
+                f"Dernière sortie :\n{last_output[-600:]}"
             )
 
         spotify_jobs[job_id]['progress'] = 85
-        spotify_jobs[job_id]['step'] = 'finalizing'
 
         # Nommage
         raw_name = os.path.splitext(os.path.basename(downloaded_file))[0]
@@ -437,7 +405,6 @@ def process_spotify_download(job_id, spotify_url, spotify_jobs):
             os.remove(final_path)
         os.rename(downloaded_file, final_path)
 
-        # Nettoyage
         for f in glob.glob(os.path.join(output_dir, "*")):
             try:
                 os.remove(f)
@@ -454,15 +421,16 @@ def process_spotify_download(job_id, spotify_url, spotify_jobs):
             'track_name': track_name,
             'download_name': download_name
         })
-        _log(job_id, f"Terminé avec succès : {track_name}")
 
     except subprocess.TimeoutExpired:
+        stop_event.set()
         spotify_jobs[job_id] = {
             'status': 'error', 'progress': 0,
-            'error': 'Téléchargement trop long. Réessaie.',
+            'error': 'Téléchargement trop long (300s). Réessaie.',
             'file_path': None
         }
     except Exception as e:
+        stop_event.set()
         spotify_jobs[job_id] = {
             'status': 'error', 'progress': 0,
             'error': str(e), 'file_path': None

@@ -291,35 +291,6 @@ def init_routes(app):
             mimetype="audio/mpeg"
         )
 
-    @app.route('/spotify-cancel/<job_id>', methods=['POST', 'GET'])
-    def spotify_cancel(job_id):
-        """Annule un job Spotify en cours et supprime ses fichiers."""
-        job = spotify_jobs.get(job_id)
-        if not job:
-            return jsonify({'error': 'Job introuvable.'}), 404
-
-        # Supprimer le fichier zip s'il existe
-        file_path = job.get('file_path')
-        if file_path and os.path.exists(file_path):
-            try:
-                os.remove(file_path)
-            except Exception:
-                pass
-
-        # Supprimer le dossier de téléchargement temporaire
-        output_dir = os.path.join(UPLOAD_FOLDER, f"spotify_{job_id}")
-        if os.path.exists(output_dir):
-            try:
-                for f in os.listdir(output_dir):
-                    os.remove(os.path.join(output_dir, f))
-                os.rmdir(output_dir)
-            except Exception:
-                pass
-
-        del spotify_jobs[job_id]
-        _log_spotify(f"Job annulé par l'utilisateur : {job_id}")
-        return jsonify({'status': 'cancelled'})
-
     @app.route('/health')
     def health():
         ffmpeg_ok = which("ffmpeg") is not None

@@ -543,37 +543,12 @@ h1 span { color: var(--gold); }
 }
 
 /* ── Footer ── */
-/* ── Notice Spotify ── */
-.spotify-notice {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  margin-top: 16px;
-  padding: 12px 14px;
-  background: rgba(201, 169, 110, 0.08);
-  border: 1px solid rgba(201, 169, 110, 0.2);
-  border-radius: 10px;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--gold-dim);
-}
-
-.spotify-notice strong {
-  color: var(--gold);
-}
-
-/* ── Footer multi-ligne ── */
 footer {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
   margin-top: clamp(24px, 4vh, 40px);
-}
-
-.footer-small {
-  font-size: 11px;
-  opacity: 0.5;
+  font-size: clamp(0.68rem, 0.8vw, 0.78rem);
+  color: var(--text-muted);
+  text-align: center;
+  opacity: 0.6;
 }
 
 /* ── Gestion du texte des tabs sur petits écrans ── */

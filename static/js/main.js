@@ -260,21 +260,6 @@ function showSpotifyStatus(type, iconPath, text) {
   spotifyStatusText.textContent = text;
 }
 
-// ── Gestionnaire beforeunload : empêche la fermeture pendant un téléchargement actif ──
-let spotifyJobId = null;
-
-window.addEventListener('beforeunload', (e) => {
-  if (spotifyJobId && spotifyPollInterval) {
-    // Tentative de notify le serveur que l'utilisateur a quitté (fire & forget)
-    try {
-      navigator.sendBeacon(`/spotify-cancel/${spotifyJobId}`);
-    } catch (_) {}
-    e.preventDefault();
-    e.returnValue = 'Un téléchargement Spotify est en cours. Si tu quittes, les fichiers seront supprimés.';
-    return e.returnValue;
-  }
-});
-
 // ── Téléchargement Playlist Spotify ──
 spotifyBtn.addEventListener('click', () => {
   const url = spotifyUrl.value.trim();
@@ -303,7 +288,6 @@ spotifyBtn.addEventListener('click', () => {
     }
 
     const jobId = data.job_id;
-    spotifyJobId = jobId; // stocké pour beforeunload
 
     // ── Polling progression Spotify ──
     spotifyPollInterval = setInterval(async () => {
@@ -327,7 +311,6 @@ spotifyBtn.addEventListener('click', () => {
 
         if (job.status === 'done') {
           clearInterval(spotifyPollInterval);
-          spotifyJobId = null; // plus besoin de retenir
           const total = job.total_count || job.total || 0;
           const success = job.success_count || job.downloaded || 0;
           spotifyProgressLbl.textContent = 'Terminé !';
@@ -342,7 +325,6 @@ spotifyBtn.addEventListener('click', () => {
 
         if (job.status === 'error') {
           clearInterval(spotifyPollInterval);
-          spotifyJobId = null;
           showSpotifyStatus('error', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>', 'Erreur : ' + (job.error || 'inconnue'));
           spotifyBtn.disabled = false;
         }

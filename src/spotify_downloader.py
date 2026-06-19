@@ -216,7 +216,7 @@ def _download_single_track(track_name, output_dir, job_id=None, spotify_jobs=Non
     """
     Recherche et télécharge un morceau depuis YouTube Music au format MP3.
     Effectue jusqu'à 3 tentatives.
-    Retourne le chemin du fichier MP3 ou None.
+    Retourne True/False comme le standalone (qui fait confiance à yt-dlp).
     """
     safe_name = sanitize_filename(track_name)
     expected_mp3 = os.path.join(output_dir, f"{safe_name}.mp3")
@@ -224,10 +224,7 @@ def _download_single_track(track_name, output_dir, job_id=None, spotify_jobs=Non
     # ── Vérifier si déjà téléchargé ──
     if os.path.exists(expected_mp3):
         _log(job_id, f"Déjà présent, ignoré : {track_name}")
-        return expected_mp3
-
-    # Compter les MP3 avant le téléchargement
-    mp3_before = set(glob.glob(os.path.join(output_dir, "*.mp3")))
+        return True
 
     # Construire les hooks de progression
     progress_hooks = []
@@ -250,78 +247,29 @@ def _download_single_track(track_name, output_dir, job_id=None, spotify_jobs=Non
         }],
     }
 
-    for attempt in range(1, 4):  # 3 tentatives max
+    for attempt in range(1, 4):
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(f"ytsearch1:{track_name}", download=True)
                 if 'entries' in info and len(info['entries']) > 0:
-                    # Attendre un peu que ffmpeg finisse la conversion
-                    time.sleep(0.5)
-                    # Chercher les nouveaux MP3 créés
-                    mp3_after = set(glob.glob(os.path.join(output_dir, "*.mp3")))
-                    new_mp3 = mp3_after - mp3_before
-                    if new_mp3:
-                        return list(new_mp3)[0]
-                    # Fallback: vérifier le chemin attendu
-                    if os.path.exists(expected_mp3):
-                        return expected_mp3
-                    # Dernier recours: prendre le MP3 le plus récent
-                    all_mp3 = sorted(glob.glob(os.path.join(output_dir, "*.mp3")), key=os.path.getmtime, reverse=True)
-                    if all_mp3:
-                        return all_mp3[0]
-                    return None
+                    # Comme le standalone : on fait confiance à yt-dlp
+                    _log(job_id, f"✓ Terminé : {track_name}")
+                    return True
         except Exception as e:
             _log(job_id, f"Essai {attempt}/3 pour {track_name} : {e}")
             if attempt < 3:
-                time.sleep(2 ** attempt)
+                time.sleep(1)
 
-    return None
-
-
-def _preload_metadata(track_name, output_dir, prefetch_cache):
-    """
-    Pré-charge les métadonnées YouTube pour un morceau.
-    Stocke le résultat dans prefetch_cache pour accélérer le download réel.
-    """
-    safe_name = sanitize_filename(track_name)
-    expected_mp3 = os.path.join(output_dir, f"{safe_name}.mp3")
-
-    # Déjà téléchargé ? skip
-    if os.path.exists(expected_mp3):
-        prefetch_cache[track_name] = ('cached', expected_mp3)
-        return
-
-    search_query = track_name.replace(' - ', ' ').strip()
-    ydl_opts = {
-        'format': 'bestaudio/best',
-        'default_search': 'ytsearch',
-        'noplaylist': True,
-        'quiet': True,
-        'no_warnings': True,
-        'noprogress': True,
-    }
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(f"ytsearch1:{search_query}", download=False)
-            if 'entries' in info and len(info['entries']) > 0:
-                entry = info['entries'][0]
-                web_url = entry.get('webpage_url', '') or entry.get('url', '')
-                prefetch_cache[track_name] = ('ready', web_url)
-            else:
-                prefetch_cache[track_name] = ('failed', None)
-    except Exception:
-        prefetch_cache[track_name] = ('failed', None)
+    return False
 
 
 def process_spotify_download(job_id, spotify_url, spotify_jobs):
     """
     Point d'entrée principal - traite un lien Spotify (playlist ou track unique).
     
-    Nouveau comportement :
-      - Télécharge UNE par UNE (séquentiel), pas 5 en parallèle
-      - Pré-charge les 5 suivantes en arrière-plan (extraction métadonnées YouTube)
-      - Évite les conflits de fichiers parallèles
-      - Progression % = nombre total / traité
+    Même logique que le standalone : 
+      - Télécharge séquentiellement 1 par 1
+      - Utilise glob pour trouver les fichiers MP3 créés (comme le standalone)
     """
     try:
         _log(job_id, f"Démarrage : {spotify_url}")
@@ -360,69 +308,32 @@ def process_spotify_download(job_id, spotify_url, spotify_jobs):
 
         _log(job_id, f"{total} piste(s) trouvée(s)")
 
-        # ── Étape 2 : Téléchargement séquentiel 1 par 1 avec pré-chargement des 5 suivantes ──
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-
+        # ── Étape 2 : Téléchargement séquentiel 1 par 1 ──
         success_count = 0
         fail_count = 0
         start_time = time.time()
-        results = {}  # idx -> file_path
-        prefetch_cache = {}  # track_name -> (status, url_or_path)
 
-        # Lancer le pré-chargement des métadonnées pour les 5 premières
-        lookahead = 5
-        prefetch_executor = ThreadPoolExecutor(max_workers=lookahead)
-        prefetch_futures = {}
-
-        def _start_prefetch(start_idx):
-            nonlocal prefetch_futures
-            # Nettoyer les futures terminées
-            prefetch_futures = {f: t for f, t in prefetch_futures.items() if not f.done()}
-            # Lancer le pré-chargement pour les prochains
-            for idx in range(start_idx, min(start_idx + lookahead, total)):
-                track = tracks[idx]
-                if track not in prefetch_cache:
-                    f = prefetch_executor.submit(_preload_metadata, track, output_dir, prefetch_cache)
-                    prefetch_futures[f] = track
-
-        # Démarrer le pré-chargement initial
-        _start_prefetch(0)
-
-        # Boucle séquentielle : 1 téléchargement à la fois
         for i in range(total):
             track = tracks[i]
-            safe_name = sanitize_filename(track)
-            expected_mp3 = os.path.join(output_dir, f"{safe_name}.mp3")
 
             try:
-                # Attendre que le pré-chargement de CE track soit fini
-                for f, t in list(prefetch_futures.items()):
-                    if t == track:
-                        f.result(timeout=30)
-                        break
-
                 # Mettre à jour le statut dans l'UI
                 spotify_jobs[job_id]['current_track'] = f"[{i+1}/{total}] {track}"
                 spotify_jobs[job_id]['track_progress'] = 'téléchargement...'
                 spotify_jobs[job_id]['track_downloading'] = True
 
-                # Télécharger ce track
-                file_path = _download_single_track(track, output_dir, job_id, spotify_jobs)
-                results[i] = file_path
+                # Télécharger ce track (comme le standalone : retourne True/False)
+                result = _download_single_track(track, output_dir, job_id, spotify_jobs)
 
-                if file_path:
+                if result:
                     success_count += 1
                     spotify_jobs[job_id]['track_progress'] = '✓'
                 else:
                     fail_count += 1
                     spotify_jobs[job_id]['track_progress'] = '✗'
 
-                # Lancer le pré-chargement pour les suivants
-                _start_prefetch(i + 1)
-
             except Exception as e:
                 _log(job_id, f"Erreur sur {track} : {e}")
-                results[i] = None
                 fail_count += 1
 
             # Progression globale : 10% → 90% pour les téléchargements
@@ -438,8 +349,6 @@ def process_spotify_download(job_id, spotify_url, spotify_jobs):
             remaining = int((total - i - 1) * avg)
             spotify_jobs[job_id]['eta'] = remaining
 
-        prefetch_executor.shutdown(wait=False)
-
         _log(job_id, f"Téléchargement terminé : {success_count}/{total} réussis, {fail_count} échecs")
         spotify_jobs[job_id]['downloaded'] = success_count
         spotify_jobs[job_id]['failed'] = fail_count
@@ -451,16 +360,28 @@ def process_spotify_download(job_id, spotify_url, spotify_jobs):
                 "Vérifie que ffmpeg est installé et que YouTube est accessible."
             )
 
+        # Attendre 1s que tous les postprocessors ffmpeg finissent
+        time.sleep(1)
+
         # ── Étape 3 : Créer un ZIP avec tous les fichiers téléchargés ──
+        # Trouver tous les MP3 dans le dossier (comme le standalone)
+        all_mp3 = sorted(glob.glob(os.path.join(output_dir, "*.mp3")), key=os.path.getmtime)
+
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
-            # Utiliser results dict indexé par idx pour garder l'ordre
             for i, track in enumerate(tracks):
-                file_path = results.get(i)
-                if file_path and os.path.exists(file_path):
+                safe_name = sanitize_filename(track)
+                mp3_path = os.path.join(output_dir, f"{safe_name}.mp3")
+                # Chercher le fichier correspondant
+                found = None
+                for mp3 in all_mp3:
+                    if safe_name in mp3 or os.path.basename(mp3).startswith(safe_name):
+                        found = mp3
+                        break
+                if found and os.path.exists(found):
                     # Nom propre dans le zip : "001 - Artiste - Titre.mp3"
                     zip_name = f"{i+1:03d} - {track}.mp3"
-                    zf.write(file_path, sanitize_filename(zip_name))
+                    zf.write(found, sanitize_filename(zip_name))
 
         zip_buffer.seek(0)
 

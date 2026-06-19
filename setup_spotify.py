@@ -40,11 +40,19 @@ def main():
 
     # Vérifier si un cache existe déjà
     if os.path.exists(CACHE_PATH):
-        print("  [!] Un fichier cache.json existe déjà.")
+        print("  [!] Le fichier cache.json existe déjà.")
         reponse = input("  Voulez-vous le régénérer ? (o/N) : ").strip().lower()
         if reponse != 'o':
             print("  [i] Annulé. Le cache existant est conservé.")
             return
+    
+    # Migrer depuis l'ancien .cache si présent
+    old_cache = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".cache")
+    if os.path.exists(old_cache) and not os.path.exists(CACHE_PATH):
+        import shutil
+        shutil.copy2(old_cache, CACHE_PATH)
+        print("  [i] Ancien .cache migré vers cache.json")
+        return
 
     print()
     print("  [i] Ouverture du navigateur pour autoriser l'application...")

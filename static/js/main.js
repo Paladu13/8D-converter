@@ -341,3 +341,9 @@ spotifyBtn.addEventListener('click', () => {
     spotifyBtn.disabled = false;
   });
 });
+
+// ── Nettoyage automatique au refresh/quit de la page ──
+window.addEventListener('beforeunload', function() {
+  // Envoie une requête synchrone (keepalive) pour nettoyer les fichiers Spotify
+  navigator.sendBeacon('/spotify-cleanup', JSON.stringify({}));
+});

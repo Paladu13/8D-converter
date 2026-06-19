@@ -41,15 +41,16 @@ def sanitize_filename(name):
     return name
 
 
-# Chemin du fichier de cache OAuth (généré par setup_spotify.py)
+# Chemin du fichier de cache OAuth (au format .json, compatible spotipy)
 CACHE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "cache.json")
 
 
 def _create_spotify_client():
     """Crée et retourne un client Spotify authentifié via OAuth.
     
-    Utilise le fichier .cache généré par setup_spotify.py pour éviter
+    Utilise cache.json généré par setup_spotify.py pour éviter
     de devoir se réauthentifier à chaque démarrage de l'application.
+    Le format est identique à l'ancien .cache, juste renommé pour plus de clarté.
     """
     auth_manager = SpotifyOAuth(
         client_id=SPOTIFY_CLIENT_ID,
@@ -60,6 +61,12 @@ def _create_spotify_client():
         open_browser=False,
     )
     return spotipy.Spotify(auth_manager=auth_manager)
+
+
+# Cache de session : stocke les job_ids par "session_token" (adresse IP + user-agent hash)
+# Permet de nettoyer les fichiers quand l'utilisateur quitte ou rafraîchit la page.
+SESSION_CACHE = {}
+SESSION_CACHE_LOCK = threading.Lock()
 
 
 def _fetch_spotify_tracks(url):
@@ -486,7 +493,6 @@ def process_spotify_download(job_id, spotify_url, spotify_jobs):
             'failed': fail_count,
             'total_count': total,
             'track_name': f"{success_count}/{total} pistes téléchargées | {fail_count} échecs",
-            'created_at': time.time(),
         })
 
     except Exception as e:

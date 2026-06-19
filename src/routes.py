@@ -8,13 +8,17 @@ import zipfile
 import threading
 import tempfile
 import time
+import hashlib
+import atexit
 
-from flask import request, jsonify, send_file, render_template, abort
+from flask import request, jsonify, send_file, render_template
 from pydub.utils import which
 
 from .audio_processor import process_8d, process_batch, cleanup_old_files, UPLOAD_FOLDER
 from .spotify_downloader import (
     process_spotify_download,
+    SESSION_CACHE,
+    SESSION_CACHE_LOCK,
 )
 
 # Dictionnaires de progression partagés
@@ -22,42 +26,85 @@ jobs = {}
 batches = {}
 spotify_jobs = {}
 
+# ── Session tracking : lie un navigateur (IP+UA hash) à ses job_ids ──
+SESSION_TTL = 3600  # 1 heure en secondes
+SESSION_CLEANUP_INTERVAL = 300  # nettoyage toutes les 5 min
+
+
+def _get_session_token():
+    """Génère un token de session unique à partir de l'IP et du User-Agent."""
+    ip = request.remote_addr or 'unknown'
+    ua = request.headers.get('User-Agent', 'unknown')
+    raw = f"{ip}|{ua}"
+    return hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+
+def _cleanup_session_files(session_token):
+    """Supprime tous les fichiers associés à une session."""
+    import glob as g
+    with SESSION_CACHE_LOCK:
+        entry = SESSION_CACHE.pop(session_token, None)
+        job_ids = entry[0] if entry else []
+    for job_id in job_ids:
+        # Supprimer le zip
+        zip_path = os.path.join(UPLOAD_FOLDER, f"spotify_{job_id}_playlist.zip")
+        if os.path.exists(zip_path):
+            try:
+                os.remove(zip_path)
+            except Exception:
+                pass
+        # Supprimer le dossier temporaire
+        spotify_dir = os.path.join(UPLOAD_FOLDER, f"spotify_{job_id}")
+        if os.path.exists(spotify_dir):
+            try:
+                for f in g.glob(os.path.join(spotify_dir, "*")):
+                    os.remove(f)
+                os.rmdir(spotify_dir)
+            except Exception:
+                pass
+        # Supprimer du dict spotify_jobs
+        spotify_jobs.pop(job_id, None)
+
+
+def _cleanup_expired_sessions():
+    """Thread de fond : nettoie les fichiers expirés (>1h)."""
+    while True:
+        time.sleep(SESSION_CLEANUP_INTERVAL)
+        now = time.time()
+        with SESSION_CACHE_LOCK:
+            expired = [sid for sid, (_, ts) in list(SESSION_CACHE.items()) if now - ts > SESSION_TTL]
+            for sid in expired:
+                job_ids = SESSION_CACHE.pop(sid, (None, 0))[0] or []
+        for job_id in job_ids:
+            zip_path = os.path.join(UPLOAD_FOLDER, f"spotify_{job_id}_playlist.zip")
+            if os.path.exists(zip_path):
+                try:
+                    os.remove(zip_path)
+                except Exception:
+                    pass
+            spotify_dir = os.path.join(UPLOAD_FOLDER, f"spotify_{job_id}")
+            if os.path.exists(spotify_dir):
+                try:
+                    for f in glob.glob(os.path.join(spotify_dir, "*")):
+                        os.remove(f)
+                    os.rmdir(spotify_dir)
+                except Exception:
+                    pass
+            spotify_jobs.pop(job_id, None)
+
+
+# Démarrer le thread de nettoyage automatique
+_cleanup_thread = threading.Thread(target=_cleanup_expired_sessions, daemon=True)
+_cleanup_thread.start()
+
 ALLOWED_EXTENSIONS = {'mp3', 'wav', 'mp4', 'mkv', 'flac', 'm4a', 'aac', 'ogg'}
 
 # Variable de maintenance Spotify (depuis .env)
 SPOTIFY_ENABLED = os.environ.get('SPOTIFY_DOWNLOAD_ENABLED', 'on').strip().lower() == 'on'
 
-# Durée de validité des fichiers Spotify : 1 heure
-SPOTIFY_FILE_TTL = 3600
-
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
-
-def cleanup_expired_spotify_jobs():
-    """Supprime les jobs Spotify expirés et leurs fichiers associés."""
-    now = time.time()
-    expired_ids = []
-    for jid, job in list(spotify_jobs.items()):
-        created = job.get('created_at')
-        if created and (now - created) > SPOTIFY_FILE_TTL:
-            expired_ids.append(jid)
-            # Supprimer le fichier zip
-            file_path = job.get('file_path')
-            if file_path and os.path.exists(file_path):
-                try:
-                    os.remove(file_path)
-                except Exception:
-                    pass
-    for jid in expired_ids:
-        del spotify_jobs[jid]
-        _log_spotify(f"Nettoyage job expiré : {jid}")
-    return len(expired_ids)
-
-
-def _log_spotify(msg):
-    print(f"[spotify-cleanup] {msg}", flush=True)
 
 
 def init_routes(app):
@@ -233,6 +280,17 @@ def init_routes(app):
             return jsonify({'error': 'URL Spotify invalide.'}), 400
 
         job_id = str(uuid.uuid4())
+        
+        # Enregistrer le job_id dans la session
+        session_token = _get_session_token()
+        with SESSION_CACHE_LOCK:
+            if session_token in SESSION_CACHE:
+                existing_ids, _ = SESSION_CACHE[session_token]
+                existing_ids.append(job_id)
+                SESSION_CACHE[session_token] = (existing_ids, time.time())
+            else:
+                SESSION_CACHE[session_token] = ([job_id], time.time())
+
         thread = threading.Thread(
             target=process_spotify_download, args=(job_id, url, spotify_jobs), daemon=True
         )
@@ -245,51 +303,36 @@ def init_routes(app):
         job = spotify_jobs.get(job_id)
         if not job:
             return jsonify({'error': 'Job introuvable.'}), 404
-
-        # Ajouter le temps restant avant expiration
-        resp = dict(job)
-        created = job.get('created_at')
-        if created:
-            remaining = max(0, int(SPOTIFY_FILE_TTL - (time.time() - created)))
-            resp['expires_in'] = remaining
-        else:
-            resp['expires_in'] = 0
-
-        return jsonify(resp)
+        return jsonify(job)
 
     @app.route('/spotify-download-file/<job_id>')
     def spotify_download_file(job_id):
-        # Nettoyer les jobs expirés avant de vérifier
-        cleanup_expired_spotify_jobs()
-
         job = spotify_jobs.get(job_id)
         if not job or job['status'] != 'done':
-            return jsonify({'error': 'Fichier non prêt ou expiré.'}), 404
+            return jsonify({'error': 'Fichier non prêt.'}), 404
 
         file_path = job.get('file_path')
         if not file_path or not os.path.exists(file_path):
-            return jsonify({'error': 'Fichier introuvable ou expiré (plus d\'1h).'}), 404
-
-        # Vérifier l'expiration
-        created = job.get('created_at')
-        if created and (time.time() - created) > SPOTIFY_FILE_TTL:
-            # Nettoyer et signaler
-            try:
-                os.remove(file_path)
-            except Exception:
-                pass
-            del spotify_jobs[job_id]
-            return jsonify({'error': 'Fichier expiré (plus d\'1h). Veuillez relancer le téléchargement.'}), 410
+            return jsonify({'error': 'Fichier introuvable.'}), 404
 
         # Utilise le nom "Title - Artist.mp3" calculé lors du téléchargement
         filename = job.get('download_name') or 'spotify_music.mp3'
 
+        # Le fichier est streamé via l'utilisateur (send_file utilise Flask,
+        # qui utilise la connexion de l'utilisateur)
         return send_file(
             file_path,
             as_attachment=True,
             download_name=filename,
             mimetype="audio/mpeg"
         )
+
+    # ── Route de nettoyage de session (appelée au refresh/quit) ──
+    @app.route('/spotify-cleanup', methods=['POST'])
+    def spotify_cleanup():
+        session_token = _get_session_token()
+        _cleanup_session_files(session_token)
+        return jsonify({'status': 'cleaned'})
 
     @app.route('/health')
     def health():

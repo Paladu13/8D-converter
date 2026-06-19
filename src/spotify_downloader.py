@@ -28,6 +28,17 @@ import requests
 
 from .audio_processor import UPLOAD_FOLDER
 
+# ── Configuration proxy Webshare ──
+PROXY_HOST = "31.59.20.176"
+PROXY_PORT = 6754
+PROXY_USER = "gyysupas"
+PROXY_PASS = "c92q2uwdjhvz"
+PROXY_URL = f"http://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}/"
+PROXIES = {
+    "http": PROXY_URL,
+    "https": PROXY_URL,
+}
+
 
 def _log(job_id, msg):
     print(f"[spotify:{job_id}] {msg}", flush=True, file=sys.stdout)
@@ -90,7 +101,7 @@ def _get_spotify_metadata(spotify_url):
 
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
         url = f'https://open.spotify.com/embed/track/{track_id}'
-        r = requests.get(url, headers=headers, timeout=15)
+        r = requests.get(url, headers=headers, timeout=15, proxies=PROXIES)
         r.raise_for_status()
 
         for m in re.finditer(
@@ -148,6 +159,7 @@ def _download_ytdlp(query, output_dir, output_template, timeout=180, player_clie
         '--extractor-args', f'youtube:player_client={clients}',
         '--output', output_template,
         '--no-warnings',
+        '--proxy', PROXY_URL,
         query
     ]
 
@@ -209,6 +221,7 @@ def _download_spotdl_fallback(spotify_url, output_dir, timeout_per_provider=90):
             '--audio', provider,
             '--dont-filter-results',
             '--log-level', 'DEBUG',
+            '--proxy', PROXY_URL,
         ]
 
         effective_timeout = timeout_per_provider

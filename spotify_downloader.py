@@ -12,6 +12,8 @@ import subprocess
 import threading
 import time
 
+import requests
+
 from .audio_processor import UPLOAD_FOLDER
 
 
@@ -45,33 +47,45 @@ def _simulate_progress(job_id, spotify_jobs, stop_event, start_pct=10, end_pct=7
 
 def _get_spotify_metadata(spotify_url):
     """
-    Récupère artiste + titre via l'API publique Spotify (pas besoin de clé).
-    Parse l'URL pour extraire le track_id, puis appelle l'embed API.
+    Récupère artiste + titre via l'API embed publique de Spotify.
+    Parse l'URL pour extraire le track_id, puis appelle la page embed.
+    Fonctionne sans clé API et depuis les IPs cloud (Render).
     """
     try:
-        # Extraire le track ID de l'URL
         match = re.search(r'track/([A-Za-z0-9]+)', spotify_url)
         if not match:
             return None, None
         track_id = match.group(1)
 
-        # Appel à l'API embed Spotify (publique, sans auth)
-        cmd = [
-            'yt-dlp',
-            '--no-playlist',
-            '--skip-download',
-            '--print', '%(artist)s|||%(title)s',
-            f'https://open.spotify.com/track/{track_id}'
-        ]
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
-        if result.returncode == 0 and '|||' in result.stdout:
-            parts = result.stdout.strip().split('|||')
-            if len(parts) == 2 and parts[0] and parts[1]:
-                return parts[0].strip(), parts[1].strip()
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+        url = f'https://open.spotify.com/embed/track/{track_id}'
+        r = requests.get(url, headers=headers, timeout=15)
+        r.raise_for_status()
+
+        # Extraire les données JSON structurées __NEXT_DATA__
+        for m in re.finditer(
+            r'<script[^>]*id="__NEXT_DATA__"[^>]*>(.*?)</script>',
+            r.text, re.DOTALL
+        ):
+            data = json.loads(m.group(1))
+            entity = (
+                data.get('props', {})
+                    .get('pageProps', {})
+                    .get('state', {})
+                    .get('data', {})
+                    .get('entity', {})
+            )
+            if not entity:
+                continue
+            artist = entity.get('artists', [{}])[0].get('name', '')
+            title = entity.get('title', '') or entity.get('name', '')
+            if artist and title:
+                return artist.strip(), title.strip()
+
     except Exception:
         pass
 
-    # Fallback : spotdl save
+    # Fallback : spotdl save (peut marcher localement)
     try:
         result = subprocess.run(
             ['spotdl', 'save', spotify_url, '--save-file', '/dev/stdout'],

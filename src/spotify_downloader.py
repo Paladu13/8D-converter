@@ -43,7 +43,13 @@ YTDLP_PLAYER_CLIENTS = "android,tv,web"
 # Fournisseurs audio de repli pour spotdl, en excluant YouTube / YouTube Music
 # (bloqués sur les IP cloud). Piped est un proxy YouTube alternatif qui passe
 # souvent là où l'accès direct à YouTube est bloqué.
-SPOTDL_FALLBACK_PROVIDERS = ["piped", "soundcloud", "bandcamp"]
+# SoundCloud est mis en premier car Piped a tendance à planter avec IndexError
+# sur certaines réponses API malformées.
+SPOTDL_FALLBACK_PROVIDERS = ["soundcloud", "bandcamp", "piped"]
+
+# Fournisseurs de dernier recours (basés YouTube, souvent bloqués sur IP cloud
+# mais peuvent fonctionner occasionnellement). On les garde pour la fin.
+SPOTDL_LAST_RESORT_PROVIDERS = ["youtube-music", "youtube"]
 
 _BOT_CHECK_MARKERS = (
     "sign in to confirm",
@@ -206,7 +212,10 @@ def _download_spotdl_fallback(spotify_url, output_dir, timeout_per_provider=90):
     all_output = []
     downloaded_file = None
 
-    for provider in SPOTDL_FALLBACK_PROVIDERS:
+    # Fournisseurs principaux (SoundCloud, Bandcamp, Piped - ordre préférentiel)
+    providers = SPOTDL_FALLBACK_PROVIDERS + SPOTDL_LAST_RESORT_PROVIDERS
+
+    for provider in providers:
         all_output.append(f"--- fournisseur : {provider} ---")
 
         cmd = [
@@ -221,6 +230,13 @@ def _download_spotdl_fallback(spotify_url, output_dir, timeout_per_provider=90):
             # On en a besoin pour voir la cause réelle, pas le symptôme.
             '--log-level', 'DEBUG',
         ]
+
+        # Les fournisseurs YouTube peuvent avoir des timeouts plus longs
+        effective_timeout = timeout_per_provider
+        if provider in ("youtube", "youtube-music"):
+            # YouTube prend souvent plus de temps, on donne +60s
+            effective_timeout = timeout_per_provider + 60
+
         proc = subprocess.Popen(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             text=True, cwd=output_dir
@@ -231,7 +247,7 @@ def _download_spotdl_fallback(spotify_url, output_dir, timeout_per_provider=90):
                 all_output.append(line)
 
         try:
-            proc.wait(timeout=timeout_per_provider)
+            proc.wait(timeout=effective_timeout)
         except subprocess.TimeoutExpired:
             proc.kill()
             all_output.append(f"[Timeout spotdl/{provider}]")
@@ -314,7 +330,7 @@ def process_spotify_download(job_id, spotify_url, spotify_jobs):
                     _log(job_id, "Blocage anti-bot YouTube détecté, abandon de yt-dlp.")
                     break
 
-        # ── Étape 3 : repli spotdl (Piped / SoundCloud / Bandcamp) ──
+        # ── Étape 3 : repli spotdl (SoundCloud / Bandcamp / Piped / YouTube-Music / YouTube) ──
         if not downloaded_file:
             spotify_jobs[job_id]['step'] = 'spotdl-fallback'
             for f in glob.glob(os.path.join(output_dir, "*")):
@@ -323,6 +339,77 @@ def process_spotify_download(job_id, spotify_url, spotify_jobs):
 
             downloaded_file, last_output = _download_spotdl_fallback(spotify_url, output_dir)
             _log(job_id, f"spotdl fallback :\n{last_output}")
+
+        # ── Étape 4 : dernier recours — yt-dlp avec combinaisons de clients alternatives ──
+        if not downloaded_file and artist and title:
+            spotify_jobs[job_id]['step'] = 'ytdlp-last-resort'
+            _log(job_id, "Spotdl a échoué, tentative yt-dlp avec clients alternatifs...")
+
+            safe_name = sanitize_filename(f"{artist} - {title}")
+            tpl = os.path.join(output_dir, f"{safe_name}.%(ext)s")
+
+            # Essayer différentes combinaisons de clients yt-dlp qui peuvent
+            # contourner le blocage sur certaines IP
+            alternate_client_configs = [
+                ("web",),                 # client web seul (parfois accepté)
+                ("android",),             # client android seul
+                ("tv",),                  # client tv seul
+                ("android,web",),         # android puis web
+                ("tv,web",),              # tv puis web
+                ("web,tv,android",),      # web en premier, puis tv, puis android
+            ]
+
+            for clients_tuple in alternate_client_configs:
+                for f in glob.glob(os.path.join(output_dir, "*")):
+                    try: os.remove(f)
+                    except Exception: pass
+
+                clients_str = ",".join(clients_tuple)
+                spotify_jobs[job_id]['step'] = f'ytdlp-alt-{clients_str}'
+                _log(job_id, f"yt-dlp dernier recours avec player_client={clients_str}")
+
+                query = f"ytsearch1:{artist} - {title}"
+                cmd = [
+                    'yt-dlp',
+                    '--no-playlist',
+                    '--extract-audio',
+                    '--audio-format', 'mp3',
+                    '--audio-quality', '192K',
+                    '--extractor-args', f'youtube:player_client={clients_str}',
+                    '--output', tpl,
+                    '--no-warnings',
+                    query
+                ]
+
+                cookies_path = os.environ.get('YOUTUBE_COOKIES_PATH', '')
+                if cookies_path and os.path.exists(cookies_path):
+                    cmd += ['--cookies', cookies_path]
+
+                try:
+                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+                    alt_output = result.stdout + result.stderr
+                except subprocess.TimeoutExpired:
+                    alt_output = "Timeout"
+                    mp3_files = glob.glob(os.path.join(output_dir, "*.mp3"))
+                    if mp3_files:
+                        downloaded_file = max(mp3_files, key=os.path.getmtime)
+                        break
+                    continue
+
+                _log(job_id, f"yt-dlp {clients_str} :\n{alt_output}")
+
+                mp3_files = glob.glob(os.path.join(output_dir, "*.mp3"))
+                if mp3_files:
+                    downloaded_file = max(mp3_files, key=os.path.getmtime)
+                    last_output = alt_output
+                    break
+
+                # Si on détecte un bot-check, essayer la configuration suivante
+                if _is_bot_check_error(alt_output):
+                    _log(job_id, f"Blocage anti-bot avec {clients_str}, essai suivant...")
+                    continue
+
+            _log(job_id, f"Résultat yt-dlp dernier recours : {'réussi' if downloaded_file else 'échoué'}")
 
         stop_event.set()
 

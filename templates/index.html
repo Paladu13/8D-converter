@@ -103,13 +103,20 @@
         <div class="cookies-body" id="cookiesBody">
           <p class="cookies-desc">
             Sur Render (serveur cloud), YouTube peut bloquer les téléchargements car il n'y a pas de navigateur pour s'authentifier.
-            <strong>Exporte tes cookies YouTube</strong> depuis un navigateur (extension "Get cookies.txt" ou "cookies.txt export") et importe-les ci-dessous.
+            <strong>Exporte tes cookies YouTube</strong> depuis l'extension Chrome <strong>"Get cookies.txt"</strong> et importe-les ci-dessous.
           </p>
           <div class="cookies-upload-area">
-            <input type="file" id="cookiesFileInput" accept=".txt" />
+            <div class="cookies-file-wrapper">
+              <input type="file" id="cookiesFileInput" accept=".txt" />
+              <button class="btn-cookies-choose" id="cookiesChooseBtn" type="button">
+                <svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+                Choisir un fichier
+              </button>
+              <span class="cookies-file-name" id="cookiesFileName">Aucun fichier sélectionné</span>
+            </div>
             <button class="btn-cookies-upload" id="cookiesUploadBtn" disabled>
               <svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-              Importer les cookies
+              Importer
             </button>
             <button class="btn-cookies-delete" id="cookiesDeleteBtn">
               <svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
@@ -120,7 +127,7 @@
           <details class="cookies-help">
             <summary>Comment exporter mes cookies YouTube ?</summary>
             <ol>
-              <li>Installe une extension comme <a href="https://chrome.google.com/webstore/detail/get-cookiestxt/bgaddhkoddajcdgocldbbfleckgcbcid" target="_blank" rel="noopener">Get cookies.txt</a> (Chrome) ou <a href="https://addons.mozilla.org/fr/firefox/addon/cookies-txt/" target="_blank" rel="noopener">cookies.txt</a> (Firefox)</li>
+              <li>Installe l'extension <a href="https://chromewebstore.google.com/detail/get-cookiestxt-clean/ahmnmhfbokciafffnknlekllgcnafnie" target="_blank" rel="noopener">Get cookies.txt</a> (Chrome)</li>
               <li>Va sur <strong>youtube.com</strong> et connecte-toi à ton compte</li>
               <li>Clique sur l'icône de l'extension et exporte les cookies</li>
               <li>Importe le fichier <code>cookies.txt</code> ci-dessus</li>

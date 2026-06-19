@@ -353,6 +353,61 @@ h1 span { color: var(--gold); }
   gap: 8px;
   flex-wrap: wrap;
 }
+.cookies-file-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 200px;
+  position: relative;
+}
+.cookies-file-wrapper input[type="file"] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+.btn-cookies-choose {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: clamp(6px, 0.7vw, 10px) clamp(10px, 1vw, 14px);
+  border-radius: 8px;
+  font-size: clamp(0.7rem, 0.8vw, 0.78rem);
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s, background 0.15s;
+  border: none;
+  font-family: 'Inter', sans-serif;
+  white-space: nowrap;
+  background: rgba(201,169,110,0.12);
+  color: var(--gold);
+  border: 1px solid rgba(201,169,110,0.25);
+  position: relative;
+}
+.btn-cookies-choose:hover {
+  background: rgba(201,169,110,0.2);
+}
+.btn-cookies-choose svg {
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex-shrink: 0;
+}
+.cookies-file-name {
+  font-size: clamp(0.68rem, 0.78vw, 0.75rem);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 80px;
+}
 .cookies-upload-area input[type="file"] {
   font-size: clamp(0.7rem, 0.8vw, 0.78rem);
   color: var(--text-muted);

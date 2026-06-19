@@ -142,8 +142,8 @@ def _is_bot_check_error(output):
     return any(marker in low for marker in _BOT_CHECK_MARKERS)
 
 
-def _simulate_progress(job_id, spotify_jobs, stop_event, start_pct=10, end_pct=75, duration=90):
-    steps = 40
+def _simulate_progress(job_id, spotify_jobs, stop_event, start_pct=10, end_pct=90, duration=180):
+    steps = 60
     interval = duration / steps
     increment = (end_pct - start_pct) / steps
     for i in range(steps):
@@ -155,6 +155,13 @@ def _simulate_progress(job_id, spotify_jobs, stop_event, start_pct=10, end_pct=7
         new_pct = int(start_pct + increment * (i + 1))
         if spotify_jobs.get(job_id, {}).get('status') == 'downloading':
             spotify_jobs[job_id]['progress'] = min(new_pct, end_pct)
+    
+    # Si le job tourne encore après la simulation, maintenir à end_pct
+    # jusqu'à ce que le stop_event soit déclenché
+    while not stop_event.is_set():
+        time.sleep(2)
+        if spotify_jobs.get(job_id, {}).get('status') == 'downloading':
+            spotify_jobs[job_id]['progress'] = end_pct
 
 
 def _get_spotify_metadata(spotify_url):
@@ -416,7 +423,7 @@ def process_spotify_download(job_id, spotify_url, spotify_jobs):
 
         progress_thread = threading.Thread(
             target=_simulate_progress,
-            args=(job_id, spotify_jobs, stop_event, 10, 75, 120),
+            args=(job_id, spotify_jobs, stop_event, 10, 90, 180),
             daemon=True
         )
         progress_thread.start()

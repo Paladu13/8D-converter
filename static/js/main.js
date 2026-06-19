@@ -6,19 +6,30 @@ const cookiesBody = document.getElementById('cookiesBody');
 const cookiesToggle = document.getElementById('cookiesToggle');
 const cookiesBadge = document.getElementById('cookiesBadge');
 const cookiesFileInput = document.getElementById('cookiesFileInput');
+const cookiesChooseBtn = document.getElementById('cookiesChooseBtn');
+const cookiesFileName = document.getElementById('cookiesFileName');
 const cookiesUploadBtn = document.getElementById('cookiesUploadBtn');
 const cookiesDeleteBtn = document.getElementById('cookiesDeleteBtn');
 const cookiesStatusMsg = document.getElementById('cookiesStatusMsg');
 
 // Toggle cookie section
-cookiesHeader.addEventListener('click', () => {
+cookiesHeader.addEventListener('click', (e) => {
+  // Ne pas basculer si on clique sur un bouton/lien à l'intérieur
+  if (e.target.closest('button, a, input, details, summary')) return;
   cookiesBody.classList.toggle('visible');
   cookiesToggle.textContent = cookiesBody.classList.contains('visible') ? '▲' : '▼';
 });
 
-// Enable upload button when file selected
+// Enable upload button and show filename when file selected
+cookiesChooseBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  cookiesFileInput.click();
+});
+
 cookiesFileInput.addEventListener('change', () => {
-  cookiesUploadBtn.disabled = !cookiesFileInput.files.length;
+  const hasFile = cookiesFileInput.files.length > 0;
+  cookiesUploadBtn.disabled = !hasFile;
+  cookiesFileName.textContent = hasFile ? cookiesFileInput.files[0].name : 'Aucun fichier sélectionné';
 });
 
 // Upload cookies
@@ -51,7 +62,7 @@ cookiesUploadBtn.addEventListener('click', async () => {
   }
 
   cookiesUploadBtn.disabled = false;
-  cookiesUploadBtn.innerHTML = `<svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Importer les cookies`;
+  cookiesUploadBtn.innerHTML = `<svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Importer`;
 });
 
 // Delete cookies

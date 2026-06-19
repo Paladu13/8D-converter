@@ -42,7 +42,7 @@ def sanitize_filename(name):
 
 
 # Chemin du fichier de cache OAuth (généré par setup_spotify.py)
-CACHE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".cache")
+CACHE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "cache.json")
 
 
 def _create_spotify_client():

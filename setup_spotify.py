@@ -25,7 +25,7 @@ CLIENT_ID = os.environ.get("SPOTIFY_CLIENT_ID", "005c10d472294a3e98d7fea8fbf52fe
 CLIENT_SECRET = os.environ.get("SPOTIFY_CLIENT_SECRET", "75929397792d4f1a9311bbc4a7f48b98")
 REDIRECT_URI = os.environ.get("SPOTIFY_REDIRECT_URI", "https://spotidown.co/en6")
 
-CACHE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".cache")
+CACHE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cache.json")
 
 
 def main():
@@ -40,7 +40,7 @@ def main():
 
     # Vérifier si un cache existe déjà
     if os.path.exists(CACHE_PATH):
-        print("  [!] Un fichier .cache existe déjà.")
+        print("  [!] Un fichier cache.json existe déjà.")
         reponse = input("  Voulez-vous le régénérer ? (o/N) : ").strip().lower()
         if reponse != 'o':
             print("  [i] Annulé. Le cache existant est conservé.")

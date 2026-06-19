@@ -8,10 +8,8 @@ import subprocess
 import threading
 import sys
 
-import tempfile
 import requests
-
-UPLOAD_FOLDER = tempfile.gettempdir()
+from .audio_processor import UPLOAD_FOLDER
 
 
 def _log(job_id, msg):
@@ -56,7 +54,6 @@ def _download_spotify(spotify_url, output_dir, job_id):
         '--output', os.path.join(output_dir, '{artist} - {title}.{ext}'),
         '--format', 'mp3',
         '--bitrate', '192k',
-        '--audio', 'spotify',
         '--dont-filter-results',
         '--log-level', 'INFO',
     ]

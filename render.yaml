@@ -2,10 +2,8 @@ services:
   - type: web
     name: audio-8d-studio
     runtime: python
-    buildCommand: apt-get update && apt-get install -y ffmpeg curl ca-certificates unzip && curl -fsSL https://github.com/denoland/deno/releases/download/v2.2.12/deno-x86_64-unknown-linux-gnu.zip -o /tmp/deno.zip && unzip -o /tmp/deno.zip -d /usr/local/bin/ && chmod +x /usr/local/bin/deno && deno --version && pip install -r requirements.txt && spotdl --download-deno 2>&1 || true
+    buildCommand: apt-get update && apt-get install -y ffmpeg && pip install -r requirements.txt
     startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --timeout 300 --workers 2
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.0"
-      - key: DENO_DIR
-        value: "/tmp/deno_cache"

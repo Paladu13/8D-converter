@@ -304,11 +304,11 @@ spotifyBtn.addEventListener('click', () => {
 
         if (job.status === 'downloading') {
           if (pct < 15) {
-            spotifyProgressLbl.textContent = 'Analyse du lien Spotify…';
-            spotifyProgressSub.textContent = 'Recherche de la piste sur Spotify';
+            spotifyProgressLbl.textContent = 'Vérification des dépendances…';
+            spotifyProgressSub.textContent = 'Recherche de la musique sur YouTube Music';
           } else if (pct < 50) {
             spotifyProgressLbl.textContent = 'Téléchargement en cours…';
-            spotifyProgressSub.textContent = 'Récupération audio via spotdl';
+            spotifyProgressSub.textContent = 'Récupération depuis YouTube Music';
           } else {
             spotifyProgressLbl.textContent = 'Conversion en MP3…';
             spotifyProgressSub.textContent = 'Encodage audio 192k';

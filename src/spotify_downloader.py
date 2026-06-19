@@ -216,6 +216,10 @@ def _download_spotdl_fallback(spotify_url, output_dir, timeout_per_provider=90):
             '--overwrite', 'skip',
             '--audio', provider,
             '--dont-filter-results',
+            # DEBUG : spotdl avale la vraie exception sous-jacente et n'affiche
+            # qu'un message générique ("YT-DLP download error") sauf en debug.
+            # On en a besoin pour voir la cause réelle, pas le symptôme.
+            '--log-level', 'DEBUG',
         ]
         proc = subprocess.Popen(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,

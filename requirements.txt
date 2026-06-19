@@ -2,3 +2,4 @@ flask>=3.0.0
 pydub>=0.25.1
 gunicorn>=22.0.0
 spotdl>=4.5.0
+requests>=2.28.0

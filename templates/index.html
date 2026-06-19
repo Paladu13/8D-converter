@@ -24,7 +24,7 @@
       <div class="ring-dot"></div>
     </div>
     <h1>Audio <span>8D</span> Studio</h1>
-    <p class="subtitle">Convertis tes sons en 8D ou télécharge les musiques Spotify</p>
+    <p class="subtitle">Convertis tes sons en 8D ou télécharge des playlists Spotify</p>
   </header>
 
   <div class="main-content">
@@ -35,8 +35,8 @@
       <span>Conversion 8D</span>
     </button>
     <button class="tab-btn" data-tab="tab-spotify" role="tab" aria-selected="false" id="spotifyTabBtn" {% if not spotify_enabled %}disabled style="opacity:0.4;cursor:not-allowed;"{% endif %}>
-      <svg viewBox="0 0 24 24"><path d="M19 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/><circle cx="12" cy="13" r="3"/><path d="M12 10v2l1 1"/></svg>
-      <span>Spotify Download</span>
+      <svg viewBox="0 0 24 24"><path d="M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16z"/><path d="M12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+      <span>Playlist Spotify</span>
     </button>
   </div>
 
@@ -90,76 +90,37 @@
     </div>
   </div>
 
-  <!-- ─── TAB 2 : Spotify Download ─── -->
+  <!-- ─── TAB 2 : Playlist Spotify ─── -->
   <div class="tab-content" id="tab-spotify" role="tabpanel">
     <div class="card">
       {% if spotify_enabled %}
-      <!-- Section Cookies YouTube -->
-      <div class="cookies-section">
-        <div class="cookies-header" id="cookiesHeader">
-          <svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:var(--gold);fill:none;stroke-width:2;"><path d="M12 2a10 10 0 1 0 10 10 4 4 0 0 1-5-5 4 4 0 0 1-5-5"/><path d="M8.5 8.5v.01"/><path d="M16 15v.01"/><path d="M12 12v.01"/><path d="M11 17v.01"/><path d="M7 14v.01"/></svg>
-          <span>Cookies YouTube <span class="cookies-badge" id="cookiesBadge">❌ non configurés</span></span>
-          <button class="cookies-toggle" id="cookiesToggle" aria-label="Afficher/masquer">▼</button>
-        </div>
-        <div class="cookies-body" id="cookiesBody">
-          <p class="cookies-desc">
-            Sur Render (serveur cloud), YouTube peut bloquer les téléchargements car il n'y a pas de navigateur pour s'authentifier.
-            <strong>Exporte tes cookies YouTube</strong> depuis l'extension Chrome <strong>"Get cookies.txt"</strong> et importe-les ci-dessous.
-          </p>
-          <div class="cookies-upload-area">
-            <div class="cookies-file-wrapper">
-              <input type="file" id="cookiesFileInput" accept=".txt" />
-              <button class="btn-cookies-choose" id="cookiesChooseBtn" type="button">
-                <svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
-                Choisir un fichier
-              </button>
-              <span class="cookies-file-name" id="cookiesFileName">Aucun fichier sélectionné</span>
-            </div>
-            <button class="btn-cookies-upload" id="cookiesUploadBtn" disabled>
-              <svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-              Importer
-            </button>
-            <button class="btn-cookies-delete" id="cookiesDeleteBtn">
-              <svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-              Supprimer
-            </button>
-          </div>
-          <div class="cookies-status-msg" id="cookiesStatusMsg"></div>
-          <details class="cookies-help">
-            <summary>Comment exporter mes cookies YouTube ?</summary>
-            <ol>
-              <li>Installe l'extension <a href="https://chromewebstore.google.com/detail/get-cookiestxt-clean/ahmnmhfbokciafffnknlekllgcnafnie" target="_blank" rel="noopener">Get cookies.txt</a> (Chrome)</li>
-              <li>Va sur <strong>youtube.com</strong> et connecte-toi à ton compte</li>
-              <li>Clique sur l'icône de l'extension et exporte les cookies</li>
-              <li>Importe le fichier <code>cookies.txt</code> ci-dessus</li>
-            </ol>
-          </details>
-        </div>
-      </div>
-
       <div class="spotify-input-area">
         <label>
-          <svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:var(--gold);fill:none;stroke-width:2;vertical-align:middle;margin-right:4px;"><path d="M19 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/><circle cx="12" cy="13" r="3"/><path d="M12 10v2l1 1"/></svg>
+          <svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:var(--gold);fill:none;stroke-width:2;vertical-align:middle;margin-right:4px;"><path d="M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16z"/><path d="M12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
           Lien Spotify
         </label>
-        <input class="spotify-url-input" id="spotifyUrl" type="text" placeholder="https://open.spotify.com/track/..." autocomplete="url" spellcheck="false" />
+        <input class="spotify-url-input" id="spotifyUrl" type="text" placeholder="https://open.spotify.com/playlist/..." autocomplete="url" spellcheck="false" />
         <div class="spotify-hint">
           <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-          Colle le lien d'une musique Spotify (track). Le nom et l'artiste seront conservés.
+          Colle le lien d'une <strong>playlist</strong> ou d'un <strong>morceau</strong> Spotify. Toutes les musiques seront téléchargées et zippées automatiquement.
         </div>
       </div>
 
-      <!-- Résultat info (titre + artiste) -->
-      <div class="spotify-result" id="spotifyResult">
-        <svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
-        <span class="sr-name" id="spotifyResultName">Musique téléchargée</span>
-        <span class="sr-artist" id="spotifyResultArtist">Artiste inconnu</span>
+      <!-- Liste des pistes de la playlist -->
+      <div class="playlist-info" id="playlistInfo" style="display:none;">
+        <div class="playlist-stats">
+          <svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:var(--gold);fill:none;stroke-width:2;"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+          <span id="playlistTrackCount">0 pistes</span>
+        </div>
+        <div class="playlist-scroll">
+          <div class="playlist-tracks" id="playlistTracks"></div>
+        </div>
       </div>
 
       <!-- Bouton téléchargement Spotify -->
       <button class="btn-primary btn-spotify" id="spotifyBtn" disabled>
         <svg viewBox="0 0 24 24" style="stroke:#fff;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        Télécharger depuis Spotify
+        Télécharger la Playlist
       </button>
 
       <!-- Progression Spotify -->
@@ -183,7 +144,7 @@
       <!-- Bouton téléchargement fichier Spotify -->
       <a class="btn-download" id="spotifyDownloadBtn" href="#">
         <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        Télécharger le fichier MP3
+        Télécharger le ZIP
       </a>
       {% else %}
       <div class="maintenance-overlay">

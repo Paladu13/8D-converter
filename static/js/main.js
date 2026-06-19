@@ -1,109 +1,4 @@
 // ────────────────────────────────────────────────────────────
-// COOKIES YouTube
-// ────────────────────────────────────────────────────────────
-const cookiesHeader = document.getElementById('cookiesHeader');
-const cookiesBody = document.getElementById('cookiesBody');
-const cookiesToggle = document.getElementById('cookiesToggle');
-const cookiesBadge = document.getElementById('cookiesBadge');
-const cookiesFileInput = document.getElementById('cookiesFileInput');
-const cookiesChooseBtn = document.getElementById('cookiesChooseBtn');
-const cookiesFileName = document.getElementById('cookiesFileName');
-const cookiesUploadBtn = document.getElementById('cookiesUploadBtn');
-const cookiesDeleteBtn = document.getElementById('cookiesDeleteBtn');
-const cookiesStatusMsg = document.getElementById('cookiesStatusMsg');
-
-// Toggle cookie section
-cookiesHeader.addEventListener('click', (e) => {
-  // Ne pas basculer si on clique sur un bouton/lien à l'intérieur
-  if (e.target.closest('button, a, input, details, summary')) return;
-  cookiesBody.classList.toggle('visible');
-  cookiesToggle.textContent = cookiesBody.classList.contains('visible') ? '▲' : '▼';
-});
-
-// Enable upload button and show filename when file selected
-cookiesChooseBtn.addEventListener('click', (e) => {
-  e.stopPropagation();
-  cookiesFileInput.click();
-});
-
-cookiesFileInput.addEventListener('change', () => {
-  const hasFile = cookiesFileInput.files.length > 0;
-  cookiesUploadBtn.disabled = !hasFile;
-  cookiesFileName.textContent = hasFile ? cookiesFileInput.files[0].name : 'Aucun fichier sélectionné';
-});
-
-// Upload cookies
-cookiesUploadBtn.addEventListener('click', async () => {
-  if (!cookiesFileInput.files.length) return;
-
-  const formData = new FormData();
-  formData.append('cookies', cookiesFileInput.files[0]);
-
-  cookiesUploadBtn.disabled = true;
-  cookiesUploadBtn.textContent = 'Importation…';
-  cookiesStatusMsg.className = 'cookies-status-msg';
-
-  try {
-    const res = await fetch('/cookies-upload', { method: 'POST', body: formData });
-    const data = await res.json();
-
-    if (data.success) {
-      cookiesStatusMsg.className = 'cookies-status-msg success visible';
-      cookiesStatusMsg.textContent = '✅ Cookies importés avec succès !';
-      cookiesBadge.textContent = '✅ configurés';
-      cookiesFileInput.value = '';
-    } else {
-      cookiesStatusMsg.className = 'cookies-status-msg error visible';
-      cookiesStatusMsg.textContent = '❌ ' + (data.error || 'Erreur inconnue');
-    }
-  } catch (err) {
-    cookiesStatusMsg.className = 'cookies-status-msg error visible';
-    cookiesStatusMsg.textContent = '❌ Erreur réseau : ' + err.message;
-  }
-
-  cookiesUploadBtn.disabled = false;
-  cookiesUploadBtn.innerHTML = `<svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Importer`;
-});
-
-// Delete cookies
-cookiesDeleteBtn.addEventListener('click', async () => {
-  cookiesDeleteBtn.disabled = true;
-  cookiesStatusMsg.className = 'cookies-status-msg';
-
-  try {
-    const res = await fetch('/cookies-delete', { method: 'POST' });
-    const data = await res.json();
-
-    if (data.success) {
-      cookiesStatusMsg.className = 'cookies-status-msg success visible';
-      cookiesStatusMsg.textContent = '🗑️ Cookies supprimés.';
-      cookiesBadge.textContent = '❌ non configurés';
-    } else {
-      cookiesStatusMsg.className = 'cookies-status-msg error visible';
-      cookiesStatusMsg.textContent = '❌ ' + (data.error || 'Erreur inconnue');
-    }
-  } catch (err) {
-    cookiesStatusMsg.className = 'cookies-status-msg error visible';
-    cookiesStatusMsg.textContent = '❌ Erreur réseau : ' + err.message;
-  }
-
-  cookiesDeleteBtn.disabled = false;
-});
-
-// Check cookie status on page load
-async function checkCookiesStatus() {
-  try {
-    const res = await fetch('/cookies-status');
-    const data = await res.json();
-    if (data.has_cookies) {
-      cookiesBadge.textContent = '✅ configurés';
-    }
-  } catch (_) {}
-}
-
-checkCookiesStatus();
-
-// ────────────────────────────────────────────────────────────
 // TAB SYSTEM
 // ────────────────────────────────────────────────────────────
 const tabBtns = document.querySelectorAll('.tab-btn');
@@ -324,10 +219,10 @@ convertBtn.addEventListener('click', () => {
 });
 
 // ────────────────────────────────────────────────────────────
-// TAB 2 : SPOTIFY DOWNLOAD (indépendant)
+// TAB 2 : PLAYLIST SPOTIFY
 // ────────────────────────────────────────────────────────────
-const spotifyUrl        = document.getElementById('spotifyUrl');
-const spotifyBtn        = document.getElementById('spotifyBtn');
+const spotifyUrl         = document.getElementById('spotifyUrl');
+const spotifyBtn         = document.getElementById('spotifyBtn');
 const spotifyProgressSec = document.getElementById('spotifyProgressSection');
 const spotifyProgressLbl = document.getElementById('spotifyProgressLabel');
 const spotifyProgressPct = document.getElementById('spotifyProgressPct');
@@ -337,9 +232,9 @@ const spotifyStatusMsg   = document.getElementById('spotifyStatusMsg');
 const spotifyStatusIcon  = document.getElementById('spotifyStatusIcon');
 const spotifyStatusText  = document.getElementById('spotifyStatusText');
 const spotifyDownloadBtn = document.getElementById('spotifyDownloadBtn');
-const spotifyResult      = document.getElementById('spotifyResult');
-const spotifyResultName  = document.getElementById('spotifyResultName');
-const spotifyResultArtist = document.getElementById('spotifyResultArtist');
+const playlistInfo       = document.getElementById('playlistInfo');
+const playlistTrackCount = document.getElementById('playlistTrackCount');
+const playlistTracks     = document.getElementById('playlistTracks');
 
 let spotifyPollInterval = null;
 
@@ -355,7 +250,7 @@ function resetSpotifyUI() {
   spotifyDownloadBtn.classList.remove('visible');
   spotifyProgressFil.style.width = '0%';
   spotifyProgressSub.textContent = '';
-  spotifyResult.classList.remove('visible');
+  playlistInfo.style.display = 'none';
   if (spotifyPollInterval) { clearInterval(spotifyPollInterval); spotifyPollInterval = null; }
 }
 
@@ -365,20 +260,19 @@ function showSpotifyStatus(type, iconPath, text) {
   spotifyStatusText.textContent = text;
 }
 
-// ── Téléchargement Spotify ──
+// ── Téléchargement Playlist Spotify ──
 spotifyBtn.addEventListener('click', () => {
   const url = spotifyUrl.value.trim();
   if (!url) return;
 
   spotifyBtn.disabled = true;
   spotifyDownloadBtn.classList.remove('visible');
-  spotifyResult.classList.remove('visible');
   spotifyStatusMsg.classList.remove('visible', 'success', 'error', 'info');
   spotifyProgressSec.classList.add('visible');
   spotifyProgressFil.style.width = '0%';
   spotifyProgressPct.textContent = '0%';
-  spotifyProgressLbl.textContent = 'Téléchargement…';
-  spotifyProgressSub.textContent = 'Recherche de la musique…';
+  spotifyProgressLbl.textContent = 'Analyse de la playlist…';
+  spotifyProgressSub.textContent = 'Récupération des pistes Spotify';
 
   fetch('/spotify-download', {
     method: 'POST',
@@ -394,8 +288,6 @@ spotifyBtn.addEventListener('click', () => {
     }
 
     const jobId = data.job_id;
-    spotifyProgressLbl.textContent = 'Téléchargement en cours…';
-    spotifyProgressSub.textContent = 'Patiente quelques secondes';
 
     // ── Polling progression Spotify ──
     spotifyPollInterval = setInterval(async () => {
@@ -408,37 +300,24 @@ spotifyBtn.addEventListener('click', () => {
         spotifyProgressPct.textContent = pct + '%';
 
         if (job.status === 'downloading') {
-          if (pct < 15) {
-            spotifyProgressLbl.textContent = 'Vérification des dépendances…';
-            spotifyProgressSub.textContent = 'Recherche de la musique sur YouTube Music';
-          } else if (pct < 50) {
-            spotifyProgressLbl.textContent = 'Téléchargement en cours…';
-            spotifyProgressSub.textContent = 'Récupération depuis YouTube Music';
+          if (job.current_track) {
+            spotifyProgressLbl.textContent = `Téléchargement : ${job.current_track}`;
+            spotifyProgressSub.textContent = `${job.downloaded || 0} / ${job.total || '?'} pistes réussies`;
           } else {
-            spotifyProgressLbl.textContent = 'Conversion en MP3…';
-            spotifyProgressSub.textContent = 'Encodage audio 192k';
+            spotifyProgressLbl.textContent = 'Téléchargement en cours…';
+            spotifyProgressSub.textContent = 'Patiente quelques instants';
           }
         }
 
         if (job.status === 'done') {
           clearInterval(spotifyPollInterval);
+          const total = job.total_count || job.total || 0;
+          const success = job.success_count || job.downloaded || 0;
           spotifyProgressLbl.textContent = 'Terminé !';
-          spotifyProgressSub.textContent = 'Téléchargement réussi';
-          spotifyResult.classList.add('visible');
-          // Affiche le vrai nom de la piste si disponible
-          // track_name est au format "Artist - Title" (venant du template spotdl)
-          const trackName = job.track_name || 'Musique Spotify';
-          const dashIdx = trackName.indexOf(' - ');
-          if (dashIdx !== -1) {
-            const artist = trackName.substring(0, dashIdx);
-            const title  = trackName.substring(dashIdx + 3);
-            spotifyResultName.textContent   = title;
-            spotifyResultArtist.textContent = artist;
-          } else {
-            spotifyResultName.textContent   = trackName;
-            spotifyResultArtist.textContent = '';
-          }
-          showSpotifyStatus('success', '<polyline stroke-linecap="round" stroke-linejoin="round" stroke-width="2" points="20 6 9 17 4 12"/>', 'Musique téléchargée avec succès !');
+          spotifyProgressSub.textContent = `${success}/${total} pistes téléchargées`;
+          
+          showSpotifyStatus('success', '<polyline stroke-linecap="round" stroke-linejoin="round" stroke-width="2" points="20 6 9 17 4 12"/>', 
+            `Playlist téléchargée ! ${success}/${total} pistes récupérées`);
           spotifyDownloadBtn.href = `/spotify-download-file/${jobId}`;
           spotifyDownloadBtn.classList.add('visible');
           spotifyBtn.disabled = false;

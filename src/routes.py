@@ -7,17 +7,14 @@ import io
 import zipfile
 import threading
 import tempfile
+import time
 
-from flask import request, jsonify, send_file, render_template
+from flask import request, jsonify, send_file, render_template, abort
 from pydub.utils import which
 
 from .audio_processor import process_8d, process_batch, cleanup_old_files, UPLOAD_FOLDER
 from .spotify_downloader import (
     process_spotify_download,
-    save_cookies_from_text,
-    clear_cookies,
-    has_cookies,
-    init_cookies,
 )
 
 # Dictionnaires de progression partagés
@@ -30,9 +27,37 @@ ALLOWED_EXTENSIONS = {'mp3', 'wav', 'mp4', 'mkv', 'flac', 'm4a', 'aac', 'ogg'}
 # Variable de maintenance Spotify (depuis .env)
 SPOTIFY_ENABLED = os.environ.get('SPOTIFY_DOWNLOAD_ENABLED', 'on').strip().lower() == 'on'
 
+# Durée de validité des fichiers Spotify : 1 heure
+SPOTIFY_FILE_TTL = 3600
+
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+def cleanup_expired_spotify_jobs():
+    """Supprime les jobs Spotify expirés et leurs fichiers associés."""
+    now = time.time()
+    expired_ids = []
+    for jid, job in list(spotify_jobs.items()):
+        created = job.get('created_at')
+        if created and (now - created) > SPOTIFY_FILE_TTL:
+            expired_ids.append(jid)
+            # Supprimer le fichier zip
+            file_path = job.get('file_path')
+            if file_path and os.path.exists(file_path):
+                try:
+                    os.remove(file_path)
+                except Exception:
+                    pass
+    for jid in expired_ids:
+        del spotify_jobs[jid]
+        _log_spotify(f"Nettoyage job expiré : {jid}")
+    return len(expired_ids)
+
+
+def _log_spotify(msg):
+    print(f"[spotify-cleanup] {msg}", flush=True)
 
 
 def init_routes(app):
@@ -220,17 +245,41 @@ def init_routes(app):
         job = spotify_jobs.get(job_id)
         if not job:
             return jsonify({'error': 'Job introuvable.'}), 404
-        return jsonify(job)
+
+        # Ajouter le temps restant avant expiration
+        resp = dict(job)
+        created = job.get('created_at')
+        if created:
+            remaining = max(0, int(SPOTIFY_FILE_TTL - (time.time() - created)))
+            resp['expires_in'] = remaining
+        else:
+            resp['expires_in'] = 0
+
+        return jsonify(resp)
 
     @app.route('/spotify-download-file/<job_id>')
     def spotify_download_file(job_id):
+        # Nettoyer les jobs expirés avant de vérifier
+        cleanup_expired_spotify_jobs()
+
         job = spotify_jobs.get(job_id)
         if not job or job['status'] != 'done':
-            return jsonify({'error': 'Fichier non prêt.'}), 404
+            return jsonify({'error': 'Fichier non prêt ou expiré.'}), 404
 
         file_path = job.get('file_path')
         if not file_path or not os.path.exists(file_path):
-            return jsonify({'error': 'Fichier introuvable.'}), 404
+            return jsonify({'error': 'Fichier introuvable ou expiré (plus d\'1h).'}), 404
+
+        # Vérifier l'expiration
+        created = job.get('created_at')
+        if created and (time.time() - created) > SPOTIFY_FILE_TTL:
+            # Nettoyer et signaler
+            try:
+                os.remove(file_path)
+            except Exception:
+                pass
+            del spotify_jobs[job_id]
+            return jsonify({'error': 'Fichier expiré (plus d\'1h). Veuillez relancer le téléchargement.'}), 410
 
         # Utilise le nom "Title - Artist.mp3" calculé lors du téléchargement
         filename = job.get('download_name') or 'spotify_music.mp3'
@@ -242,45 +291,10 @@ def init_routes(app):
             mimetype="audio/mpeg"
         )
 
-    # ── Routes Cookies YouTube ──
-    @app.route('/cookies-status')
-    def cookies_status():
-        return jsonify({
-            'has_cookies': has_cookies()
-        })
-
-    @app.route('/cookies-upload', methods=['POST'])
-    def cookies_upload():
-        if 'cookies' not in request.files:
-            return jsonify({'error': 'Aucun fichier cookies fourni.'}), 400
-
-        file = request.files['cookies']
-        if file.filename == '':
-            return jsonify({'error': 'Nom de fichier vide.'}), 400
-
-        try:
-            content = file.read().decode('utf-8')
-            if not content.strip():
-                return jsonify({'error': 'Fichier cookies vide.'}), 400
-
-            if save_cookies_from_text(content):
-                return jsonify({'success': True, 'message': 'Cookies importés avec succès.'})
-            else:
-                return jsonify({'error': 'Erreur lors de la sauvegarde des cookies.'}), 500
-        except Exception as e:
-            return jsonify({'error': f'Erreur de lecture du fichier: {str(e)}'}), 400
-
-    @app.route('/cookies-delete', methods=['POST'])
-    def cookies_delete():
-        if clear_cookies():
-            return jsonify({'success': True, 'message': 'Cookies supprimés.'})
-        return jsonify({'error': 'Aucun cookie à supprimer.'}), 404
-
     @app.route('/health')
     def health():
         ffmpeg_ok = which("ffmpeg") is not None
         return jsonify({
             'status': 'ok',
             'ffmpeg_installed': ffmpeg_ok,
-            'cookies_configured': has_cookies()
         })

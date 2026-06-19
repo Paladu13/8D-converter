@@ -22,16 +22,31 @@ if ffmpeg_path:
 if ffprobe_path:
     AudioSegment.ffprobe = ffprobe_path
 
-# ── Cookies YouTube (depuis env var ou upload) ──
-from src.spotify_downloader import init_cookies
-init_cookies()
-
 # ── Application Flask ──
 from flask import Flask
 from src.routes import init_routes
+from src.routes import cleanup_expired_spotify_jobs
 
 app = Flask(__name__)
 init_routes(app)
+
+# ── Nettoyage périodique des fichiers Spotify expirés ──
+import threading
+import time as _time
+
+def _periodic_cleanup():
+    """Nettoie les fichiers Spotify expirés toutes les 5 minutes."""
+    while True:
+        _time.sleep(300)  # 5 minutes
+        try:
+            cleaned = cleanup_expired_spotify_jobs()
+            if cleaned:
+                print(f"[cleanup] {cleaned} job(s) Spotify expiré(s) nettoyé(s)", flush=True)
+        except Exception:
+            pass
+
+cleanup_thread = threading.Thread(target=_periodic_cleanup, daemon=True)
+cleanup_thread.start()
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))

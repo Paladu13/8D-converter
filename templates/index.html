@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>8D Audio Studio</title>
+  <title>Spotify Download</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Inter:wght@400;500&display=swap" rel="stylesheet">
@@ -23,75 +23,11 @@
       <div class="ring ring-inner"></div>
       <div class="ring-dot"></div>
     </div>
-    <h1>Audio <span>8D</span> Studio</h1>
-    <p class="subtitle">Convertis tes sons en 8D ou télécharge les musiques Spotify</p>
+    <h1>Spotify <span>Download</span></h1>
+    <p class="subtitle">Télécharge tes musiques Spotify en MP3</p>
   </header>
 
   <div class="main-content">
-  <!-- Tabs -->
-  <div class="tabs" role="tablist">
-    <button class="tab-btn active" data-tab="tab-convert" role="tab" aria-selected="true">
-      <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-      <span>Conversion 8D</span>
-    </button>
-    <button class="tab-btn" data-tab="tab-spotify" role="tab" aria-selected="false">
-      <svg viewBox="0 0 24 24"><path d="M19 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/><circle cx="12" cy="13" r="3"/><path d="M12 10v2l1 1"/></svg>
-      <span>Spotify Download</span>
-    </button>
-  </div>
-
-  <!-- ─── TAB 1 : Conversion 8D ─── -->
-  <div class="tab-content active" id="tab-convert" role="tabpanel">
-    <div class="card">
-      <!-- Zone de dépôt (multi-fichier) -->
-      <div class="dropzone" id="dropzone">
-        <input type="file" id="fileInput" multiple accept=".mp3,.wav,.mp4,.mkv,.flac,.m4a,.aac,.ogg" />
-        <div class="dz-icon">
-          <svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
-        </div>
-        <div class="dz-label">Dépose tes fichiers ici</div>
-        <div class="dz-hint">ou clique pour en sélectionner plusieurs</div>
-        <div class="dz-formats">MP3 · WAV · FLAC · M4A · AAC · OGG · MP4 · MKV</div>
-      </div>
-
-      <!-- Liste des fichiers sélectionnés -->
-      <div class="file-list" id="fileList"></div>
-      <div class="file-count" id="fileCount"></div>
-
-      <!-- Bouton conversion -->
-      <button class="btn-primary" id="convertBtn" disabled>
-        <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-        Lancer la conversion 8D
-      </button>
-
-      <!-- Progression -->
-      <div class="progress-section" id="progressSection">
-        <div class="progress-header">
-          <span class="progress-label" id="progressLabel">Préparation…</span>
-          <span class="progress-pct" id="progressPct">0%</span>
-        </div>
-        <div class="progress-track">
-          <div class="progress-fill" id="progressFill"></div>
-        </div>
-        <div class="progress-sub" id="progressSub"></div>
-      </div>
-
-      <!-- Message statut -->
-      <div class="status-msg" id="statusMsg">
-        <svg id="statusIcon" viewBox="0 0 24 24"></svg>
-        <span id="statusText"></span>
-      </div>
-
-      <!-- Bouton téléchargement (ZIP) -->
-      <a class="btn-download" id="downloadBtn" href="#">
-        <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        Télécharger le ZIP 8D
-      </a>
-    </div>
-  </div>
-
-  <!-- ─── TAB 2 : Spotify Download ─── -->
-  <div class="tab-content" id="tab-spotify" role="tabpanel">
     <div class="card">
       <div class="spotify-input-area">
         <label>
@@ -143,10 +79,9 @@
       </a>
     </div>
   </div>
-  </div>
 
   <footer>
-    Mets un casque pour l'expérience complète 🎧
+    Écoute ta musique partout 🎧
   </footer>
 </div>
 

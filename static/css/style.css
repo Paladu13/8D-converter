@@ -120,7 +120,7 @@ h1 span { color: var(--gold); }
   font-weight: 400;
 }
 
-/* ── Main content wrapper (tabs + card) ── */
+/* ── Main content wrapper ── */
 .main-content {
   width: 100%;
   max-width: min(90vw, 800px);
@@ -129,64 +129,7 @@ h1 span { color: var(--gold); }
   align-items: center;
 }
 
-/* ── Tabs ── */
-.tabs {
-  display: flex;
-  gap: 4px;
-  margin-bottom: clamp(16px, 2vh, 28px);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 4px;
-  width: 100%;
-}
-.tab-btn {
-  flex: 1;
-  padding: clamp(8px, 1.2vw, 14px) clamp(12px, 1.5vw, 20px);
-  border: none;
-  border-radius: 10px;
-  background: transparent;
-  color: var(--text-muted);
-  font-family: 'Syne', sans-serif;
-  font-size: clamp(0.75rem, 1.1vw, 0.9rem);
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  white-space: nowrap;
-}
-.tab-btn svg {
-  width: clamp(14px, 1.2vw, 18px);
-  height: clamp(14px, 1.2vw, 18px);
-  stroke: currentColor;
-  fill: none;
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  flex-shrink: 0;
-}
-.tab-btn.active {
-  background: rgba(201,169,110,0.12);
-  color: var(--gold);
-}
-.tab-btn:hover:not(.active) {
-  color: var(--beige);
-  background: rgba(255,255,255,0.03);
-}
-
-/* ── Tab content ── */
-.tab-content {
-  display: none;
-  width: 100%;
-}
-.tab-content.active {
-  display: block;
-}
-
-/* ── Card (agrandi et centré) ── */
+/* ── Card ── */
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -196,102 +139,7 @@ h1 span { color: var(--gold); }
   padding: clamp(20px, 3vw, 36px);
 }
 
-/* ── Drop zone (onglet 1) ── */
-.dropzone {
-  border: 2px dashed var(--border);
-  border-radius: 14px;
-  padding: clamp(24px, 4vw, 48px) clamp(16px, 2vw, 24px);
-  text-align: center;
-  cursor: pointer;
-  transition: border-color 0.2s, background 0.2s;
-  position: relative;
-}
-.dropzone:hover, .dropzone.dragging {
-  border-color: var(--gold);
-  background: rgba(201,169,110,0.05);
-}
-.dropzone input {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  cursor: pointer;
-  width: 100%;
-  height: 100%;
-}
-
-.dz-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: clamp(40px, 4vw, 56px);
-  height: clamp(40px, 4vw, 56px);
-  border-radius: 12px;
-  background: rgba(201,169,110,0.12);
-  margin-bottom: clamp(8px, 1vh, 14px);
-}
-.dz-icon svg { width: clamp(18px, 2vw, 28px); height: clamp(18px, 2vw, 28px); stroke: var(--gold); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-
-.dz-label {
-  font-family: 'Syne', sans-serif;
-  font-size: clamp(0.85rem, 1.5vw, 1.1rem);
-  font-weight: 600;
-  color: var(--beige);
-  margin-bottom: 4px;
-}
-.dz-hint {
-  font-size: clamp(0.7rem, 1vw, 0.85rem);
-  color: var(--text-muted);
-}
-.dz-formats {
-  font-size: clamp(0.6rem, 0.8vw, 0.72rem);
-  color: var(--gold-dim);
-  margin-top: 6px;
-  letter-spacing: 0.04em;
-}
-
-/* ── File list ── */
-.file-list {
-  display: none;
-  flex-direction: column;
-  gap: 6px;
-  margin-top: 14px;
-  max-height: 160px;
-  overflow-y: auto;
-}
-.file-list.visible { display: flex; }
-
-.file-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: rgba(201,169,110,0.07);
-  border: 1px solid rgba(201,169,110,0.2);
-  border-radius: 8px;
-  padding: 8px 10px;
-}
-.fi-icon-small {
-  width: 24px; height: 24px; flex-shrink: 0;
-  background: rgba(201,169,110,0.15); border-radius: 5px;
-  display: flex; align-items: center; justify-content: center;
-}
-.fi-icon-small svg { width: 12px; height: 12px; stroke: var(--gold); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.fi-name { font-size: 0.78rem; color: var(--beige); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
-.fi-size { font-size: 0.68rem; color: var(--text-muted); flex-shrink: 0; }
-.fi-remove {
-  background: none; border: none; cursor: pointer;
-  color: var(--text-muted); font-size: 0.9rem; line-height: 1;
-  padding: 2px 4px; border-radius: 4px; transition: color 0.15s;
-}
-.fi-remove:hover { color: var(--red); }
-
-.file-count {
-  font-size: 0.74rem;
-  color: var(--gold-dim);
-  margin-top: 6px;
-  text-align: center;
-}
-
-/* ── Spotify input area (onglet 2) ── */
+/* ── Spotify input area ── */
 .spotify-input-area {
   display: flex;
   flex-direction: column;
@@ -486,20 +334,6 @@ footer {
   color: var(--text-muted);
   text-align: center;
   opacity: 0.6;
-}
-
-/* ── Gestion du texte des tabs sur petits écrans ── */
-@media (max-width: 480px) {
-  .tab-btn {
-    flex-direction: column;
-    gap: 4px;
-    padding: 8px 6px;
-    font-size: 0.7rem;
-  }
-  .tab-btn svg {
-    width: 18px;
-    height: 18px;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -1,5 +1,5 @@
 """
-8D Audio Studio - Point d'entrée de l'application Flask.
+Spotify Download - Point d'entrée de l'application Flask.
 """
 import os
 

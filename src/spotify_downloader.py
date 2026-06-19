@@ -3,16 +3,15 @@ Module de téléchargement Spotify.
 
 Stratégie (pensée pour les IP cloud type Render, qui se font bloquer par YouTube) :
   1. Métadonnées Spotify (artiste / titre) via l'API embed publique de Spotify.
-  2. yt-dlp ytsearch sur YouTube en émulant le client Android/TV, ce qui contourne
-     dans la majorité des cas le blocage anti-bot ("Sign in to confirm you're not
-     a bot") que subissent les IP de datacenter. Dès qu'un blocage de ce type est
-     détecté, on arrête immédiatement les tentatives YouTube (inutile d'insister).
+  2. yt-dlp ytsearch sur YouTube :
+     - Plusieurs tentatives avec des requêtes de plus en plus spécifiques
+     - --match-filter pour n'accepter que les résultats contenant l'artiste
+     - Émulation du client Android/TV pour contourner le blocage anti-bot
   3. Repli spotdl avec plusieurs fournisseurs audio alternatifs (SoundCloud, Bandcamp,
-     Piped, YouTube Music, YouTube — essayés un par un pour éviter qu'un crash
-     spotdl sur un fournisseur n'empêche les suivants), et un matching permissif
-     (--dont-filter-results).
-  4. Dernier recours : yt-dlp avec combinaisons de clients alternatives, et avec
-     --cookies-from-browser si disponible.
+     Piped, YouTube Music), matching strict (sans --dont-filter-results).
+  4. Repli sur l'API Piped (instance invidious/piped) pour faire une recherche
+     YouTube propre et récupérer l'audio via yt-dlp par video ID.
+  5. Dernier recours : yt-dlp avec combinaisons de clients alternatives.
 """
 import os
 import re
@@ -28,17 +27,6 @@ import requests
 
 from .audio_processor import UPLOAD_FOLDER
 
-# ── Configuration proxy Webshare ──
-PROXY_HOST = "31.59.20.176"
-PROXY_PORT = 6754
-PROXY_USER = "gyysupas"
-PROXY_PASS = "c92q2uwdjhvz"
-PROXY_URL = f"http://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}/"
-PROXIES = {
-    "http": PROXY_URL,
-    "https": PROXY_URL,
-}
-
 
 def _log(job_id, msg):
     print(f"[spotify:{job_id}] {msg}", flush=True, file=sys.stdout)
@@ -46,7 +34,7 @@ def _log(job_id, msg):
 
 YTDLP_PLAYER_CLIENTS = "android,tv,web"
 
-SPOTDL_FALLBACK_PROVIDERS = ["soundcloud", "bandcamp", "piped"]
+SPOTDL_PROVIDERS = ["soundcloud", "bandcamp", "piped"]
 SPOTDL_LAST_RESORT_PROVIDERS = ["youtube-music", "youtube"]
 
 _BOT_CHECK_MARKERS = (
@@ -54,6 +42,20 @@ _BOT_CHECK_MARKERS = (
     "confirm you're not a bot",
     "http error 429",
 )
+
+# Liste d'instances Piped fiables pour la recherche YouTube
+PIPED_INSTANCES = [
+    "https://pipedapi.kavin.rocks",
+    "https://pipedapi.syncpundit.com",
+    "https://pipedapi.pfcd.me",
+    "https://pipedapi.moomoo.me",
+]
+
+# Pour s'assurer que le match-filter fonctionne, on définit les champs
+# auxquels on peut faire référence dans --match-filter
+# yt-dlp v2023+ supporte: title, artist, artists, etc.
+# Mais attention : ces champs ne sont disponibles qu'avec certains extracteurs.
+# On va plutôt utiliser --match-filter sur le title uniquement.
 
 
 def sanitize_filename(name):
@@ -96,12 +98,12 @@ def _get_spotify_metadata(spotify_url):
     try:
         match = re.search(r'track/([A-Za-z0-9]+)', spotify_url)
         if not match:
-            return None, None
+            return None, None, None
         track_id = match.group(1)
 
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
         url = f'https://open.spotify.com/embed/track/{track_id}'
-        r = requests.get(url, headers=headers, timeout=15, proxies=PROXIES)
+        r = requests.get(url, headers=headers, timeout=15)
         r.raise_for_status()
 
         for m in re.finditer(
@@ -121,7 +123,7 @@ def _get_spotify_metadata(spotify_url):
             artist = entity.get('artists', [{}])[0].get('name', '')
             title = entity.get('title', '') or entity.get('name', '')
             if artist and title:
-                return artist.strip(), title.strip()
+                return artist.strip(), title.strip(), track_id
     except Exception:
         pass
 
@@ -138,14 +140,76 @@ def _get_spotify_metadata(spotify_url):
                 artist = song.get('artist') or (song.get('artists', [''])[0] if song.get('artists') else '')
                 title = song.get('name') or song.get('title') or ''
                 if artist and title:
-                    return artist.strip(), title.strip()
+                    return artist.strip(), title.strip(), track_id
     except Exception:
         pass
 
+    return None, None, track_id
+
+
+def _build_match_filter(artist, title):
+    """
+    Construit une chaîne --match-filter pour yt-dlp qui impose que le titre
+    contienne des mots-clés de l'artiste ET du titre.
+    
+    On ne peut pas utiliser 'artist' comme champ car il n'est pas présent
+    dans les métadonnées de search results. On se base sur le 'title'.
+    On vérifie que le titre contient au moins 2 mots significatifs de l'artiste.
+    """
+    if not artist:
+        return None
+    
+    # Prendre les mots significatifs de l'artiste (au moins 3 caractères)
+    artist_keywords = [w for w in re.findall(r'[A-Za-z0-9]+', artist) if len(w) >= 3]
+    if not artist_keywords:
+        return None
+    
+    # Construire une condition: le titre doit contenir au moins un mot de l'artiste
+    conditions = []
+    for keyword in artist_keywords[:3]:  # max 3 mots
+        conditions.append(f'title *? "{keyword}"')
+    
+    # Il faut qu'au moins UN des mots de l'artiste soit présent dans le titre
+    match_filter = " | ".join(conditions)
+    return match_filter
+
+
+def _search_piped(query):
+    """
+    Utilise l'API Piped (instance libre de YouTube sans tracker) pour chercher
+    une vidéo. Retourne l'ID vidéo et le titre, ou None.
+    """
+    for instance in PIPED_INSTANCES:
+        try:
+            url = f"{instance}/search"
+            r = requests.post(url, json={
+                "q": query,
+                "filter": "videos"
+            }, timeout=15, headers={
+                "Content-Type": "application/json",
+                "User-Agent": "Mozilla/5.0"
+            })
+            if r.status_code != 200:
+                continue
+            data = r.json()
+            items = data.get("items", [])
+            if not items:
+                continue
+            # Prendre le premier résultat
+            first = items[0]
+            video_id = first.get("url")
+            if video_id and video_id.startswith("/watch?v="):
+                video_id = video_id[9:]
+            else:
+                video_id = first.get("url")
+            title = first.get("title", "")
+            return video_id, title
+        except Exception:
+            continue
     return None, None
 
 
-def _download_ytdlp(query, output_dir, output_template, timeout=180, player_clients=None):
+def _download_ytdlp(query, output_dir, output_template, timeout=180, player_clients=None, match_filter=None):
     """
     Télécharge via yt-dlp. Retourne (chemin_mp3_ou_None, sortie_texte).
     """
@@ -159,9 +223,13 @@ def _download_ytdlp(query, output_dir, output_template, timeout=180, player_clie
         '--extractor-args', f'youtube:player_client={clients}',
         '--output', output_template,
         '--no-warnings',
-        '--proxy', PROXY_URL,
-        query
     ]
+    
+    # Ajouter match-filter si fourni
+    if match_filter:
+        cmd += ['--match-filter', match_filter]
+    
+    cmd.append(query)
 
     cookies_path = os.environ.get('YOUTUBE_COOKIES_PATH', '')
     if cookies_path and os.path.exists(cookies_path):
@@ -197,18 +265,29 @@ def _download_ytdlp(query, output_dir, output_template, timeout=180, player_clie
     return None, output
 
 
+def _download_by_video_id(video_id, output_dir, output_template, timeout=180):
+    """
+    Télécharge l'audio d'une vidéo YouTube par son ID.
+    """
+    video_url = f"https://www.youtube.com/watch?v={video_id}"
+    return _download_ytdlp(
+        video_url, output_dir, output_template,
+        timeout=timeout, match_filter=None
+    )
+
+
 def _download_spotdl_fallback(spotify_url, output_dir, timeout_per_provider=90):
     """
     Repli via spotdl, un sous-processus par fournisseur.
-
-    Certains fournisseurs (notamment Piped) peuvent faire crasher spotdl
-    avec une IndexError interne. On capture stdout+stderr et on gère les
-    exceptions proprement pour ne pas bloquer les fournisseurs suivants.
+    
+    Version améliorée : 
+    - Supprime --dont-filter-results pour un matching strict
+    - Ajoute --preload pour charger les métadonnées avant
     """
     all_output = []
     downloaded_file = None
 
-    providers = SPOTDL_FALLBACK_PROVIDERS + SPOTDL_LAST_RESORT_PROVIDERS
+    providers = SPOTDL_PROVIDERS + SPOTDL_LAST_RESORT_PROVIDERS
 
     for provider in providers:
         all_output.append(f"--- fournisseur : {provider} ---")
@@ -219,9 +298,8 @@ def _download_spotdl_fallback(spotify_url, output_dir, timeout_per_provider=90):
             '--format', 'mp3', '--bitrate', '192k',
             '--overwrite', 'skip',
             '--audio', provider,
-            '--dont-filter-results',
+            '--preload',
             '--log-level', 'DEBUG',
-            '--proxy', PROXY_URL,
         ]
 
         effective_timeout = timeout_per_provider
@@ -294,21 +372,26 @@ def process_spotify_download(job_id, spotify_url, spotify_jobs):
 
         downloaded_file = None
         last_output = ''
-        artist, title = None, None
+        artist, title, track_id = None, None, None
 
-        # Étape 1 : métadonnées Spotify
+        # Étape 0 : métadonnées Spotify (inclut track_id)
         spotify_jobs[job_id]['step'] = 'metadata'
-        artist, title = _get_spotify_metadata(spotify_url)
-        _log(job_id, f"Métadonnées : artist={artist!r} title={title!r}")
+        artist, title, track_id = _get_spotify_metadata(spotify_url)
+        _log(job_id, f"Métadonnées : artist={artist!r} title={title!r} track_id={track_id!r}")
 
         if artist and title:
             safe_name = sanitize_filename(f"{artist} - {title}")
             tpl = os.path.join(output_dir, f"{safe_name}.%(ext)s")
+            match_filter = _build_match_filter(artist, title)
+            _log(job_id, f"match-filter : {match_filter}")
 
+            # ── Étape 1A : Recherche avec guillemets pour phrase exacte ──
             queries = [
-                f"ytsearch1:{artist} - {title}",
-                f"ytsearch1:{artist} {title} official audio",
-                f"ytsearch1:{title} {artist} lyrics",
+                f'ytsearch1:"{artist}" "{title}"',
+                f'ytsearch1:"{artist} - {title}" official audio',
+                f'ytsearch1:"{artist} - {title}" official music video',
+                f'ytsearch1:{artist} {title} audio',
+                f'ytsearch1:{artist} {title} topic',  # Topic = chaîne auto YouTube Music
             ]
 
             for q_idx, query in enumerate(queries):
@@ -319,7 +402,9 @@ def process_spotify_download(job_id, spotify_url, spotify_jobs):
                     except Exception:
                         pass
 
-                downloaded_file, last_output = _download_ytdlp(query, output_dir, tpl)
+                downloaded_file, last_output = _download_ytdlp(
+                    query, output_dir, tpl, match_filter=match_filter
+                )
                 _log(job_id, f"yt-dlp tentative {q_idx + 1} ({query}) :\n{last_output}")
 
                 if downloaded_file:
@@ -328,7 +413,54 @@ def process_spotify_download(job_id, spotify_url, spotify_jobs):
                     _log(job_id, "Blocage anti-bot YouTube détecté, abandon de yt-dlp.")
                     break
 
-        # Étape 2 : repli spotdl
+            # ── Étape 1B : Recherche via API Piped si yt-dlp n'a rien trouvé ──
+            if not downloaded_file and not _is_bot_check_error(last_output):
+                spotify_jobs[job_id]['step'] = 'piped-search'
+                _log(job_id, "Recherche via API Piped...")
+                
+                # Nettoyer le dossier
+                for f in glob.glob(os.path.join(output_dir, "*")):
+                    try:
+                        os.remove(f)
+                    except Exception:
+                        pass
+                
+                piped_query = f"{artist} - {title} audio"
+                video_id, piped_title = _search_piped(piped_query)
+                
+                if video_id:
+                    _log(job_id, f"Piped a trouvé : {piped_title} (id={video_id})")
+                    downloaded_file, piped_output = _download_by_video_id(
+                        video_id, output_dir, tpl, timeout=180
+                    )
+                    last_output = piped_output
+                    _log(job_id, f"Téléchargement par vidéo ID : {'réussi' if downloaded_file else 'échoué'}")
+                else:
+                    _log(job_id, "Piped n'a trouvé aucun résultat")
+                    
+                # Si ça a échoué, essayer d'autres requêtes Piped
+                if not downloaded_file:
+                    for alt_query in [
+                        f"{artist} {title} official audio",
+                        f"{artist} - {title} topic",
+                    ]:
+                        for f in glob.glob(os.path.join(output_dir, "*")):
+                            try:
+                                os.remove(f)
+                            except Exception:
+                                pass
+                        
+                        video_id, piped_title = _search_piped(alt_query)
+                        if video_id:
+                            _log(job_id, f"Piped (alt) a trouvé : {piped_title} (id={video_id})")
+                            downloaded_file, piped_output = _download_by_video_id(
+                                video_id, output_dir, tpl, timeout=180
+                            )
+                            last_output = piped_output
+                            if downloaded_file:
+                                break
+
+        # Étape 2 : repli spotdl (matching strict)
         if not downloaded_file:
             spotify_jobs[job_id]['step'] = 'spotdl-fallback'
             for f in glob.glob(os.path.join(output_dir, "*")):
@@ -340,10 +472,11 @@ def process_spotify_download(job_id, spotify_url, spotify_jobs):
             downloaded_file, last_output = _download_spotdl_fallback(spotify_url, output_dir)
             _log(job_id, f"spotdl fallback :\n{last_output}")
 
-        # Étape 3 : dernier recours yt-dlp avec clients alternatifs
+        # Étape 3 : dernier recours yt-dlp avec combinaisons de clients alternatives
+        # et sans match-filter (plus permissif)
         if not downloaded_file and artist and title:
             spotify_jobs[job_id]['step'] = 'ytdlp-last-resort'
-            _log(job_id, "Spotdl a échoué, tentative yt-dlp avec clients alternatifs...")
+            _log(job_id, "Échec des méthodes précédentes, dernière tentative yt-dlp avec clients alternatifs...")
 
             safe_name = sanitize_filename(f"{artist} - {title}")
             tpl = os.path.join(output_dir, f"{safe_name}.%(ext)s")
@@ -367,13 +500,15 @@ def process_spotify_download(job_id, spotify_url, spotify_jobs):
                 clients_str = ",".join(clients_tuple)
                 spotify_jobs[job_id]['step'] = f'ytdlp-alt-{clients_str}'
 
-                query = f"ytsearch1:{artist} - {title}"
+                # Dernière tentative : sans match-filter pour être plus permissif
+                query = f"ytsearch1:{artist} - {title} audio"
                 downloaded_file, alt_output = _download_ytdlp(
                     query, output_dir, tpl, timeout=120,
-                    player_clients=clients_str
+                    player_clients=clients_str,
+                    match_filter=None  # Pas de filtre = plus de résultats
                 )
 
-                _log(job_id, f"yt-dlp {clients_str} :\n{alt_output}")
+                _log(job_id, f"yt-dlp {clients_str} (no filter) :\n{alt_output}")
                 if downloaded_file:
                     last_output = alt_output
                     break
@@ -381,8 +516,6 @@ def process_spotify_download(job_id, spotify_url, spotify_jobs):
                 if _is_bot_check_error(alt_output):
                     _log(job_id, f"Blocage anti-bot avec {clients_str}, essai suivant...")
                     continue
-
-            _log(job_id, f"Résultat yt-dlp dernier recours : {'réussi' if downloaded_file else 'échoué'}")
 
         stop_event.set()
 

@@ -27,6 +27,9 @@ spotify_jobs = {}
 
 ALLOWED_EXTENSIONS = {'mp3', 'wav', 'mp4', 'mkv', 'flac', 'm4a', 'aac', 'ogg'}
 
+# Variable de maintenance Spotify (depuis .env)
+SPOTIFY_ENABLED = os.environ.get('SPOTIFY_DOWNLOAD_ENABLED', 'on').strip().lower() == 'on'
+
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -37,7 +40,7 @@ def init_routes(app):
 
     @app.route('/')
     def index():
-        return render_template('index.html')
+        return render_template('index.html', spotify_enabled=SPOTIFY_ENABLED)
 
     @app.route('/convert', methods=['POST'])
     def convert():

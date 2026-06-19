@@ -3,6 +3,10 @@
 """
 import os
 
+# ── Charger les variables d'environnement du fichier .env ──
+from dotenv import load_dotenv
+load_dotenv()
+
 # ── Polyfill audioop DOIT être avant pydub ──
 from src.audioop_polyfill import install_audioop
 install_audioop()

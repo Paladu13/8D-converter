@@ -44,6 +44,9 @@ _BOT_CHECK_MARKERS = (
     "http error 429",
     "sign in",
     "login required",
+    "use --cookies-from-browser",
+    "use --cookies for the authentication",
+    "cookies for the authentication",
 )
 
 # Fichier de cookies persistant pour YouTube (dans le dossier upload)
@@ -77,6 +80,7 @@ def init_cookies():
     """
     # Si le fichier uploadé existe déjà, ne rien faire (il a priorité)
     if os.path.exists(COOKIES_FILE):
+        _ensure_ytdlp_config()
         return True
 
     # Sinon, essayer la variable d'environnement
@@ -86,6 +90,7 @@ def init_cookies():
             decoded = base64.b64decode(env_cookies).decode('utf-8')
             with open(COOKIES_FILE, 'w', encoding='utf-8') as f:
                 f.write(decoded)
+            _ensure_ytdlp_config()
             return True
         except Exception as e:
             print(f"[cookies] Erreur décodage YOUTUBE_COOKIES: {e}", flush=True)
@@ -99,9 +104,46 @@ def save_cookies_from_text(cookies_text):
         os.makedirs(os.path.dirname(COOKIES_FILE), exist_ok=True)
         with open(COOKIES_FILE, 'w', encoding='utf-8') as f:
             f.write(cookies_text)
+        # Créer le fichier de config yt-dlp pour que spotdl l'utilise aussi
+        _ensure_ytdlp_config()
         return True
     except Exception as e:
         print(f"[cookies] Erreur sauvegarde: {e}", flush=True)
+        return False
+
+
+def _ensure_ytdlp_config():
+    """Crée un fichier de config yt-dlp qui référence nos cookies.
+    Nécessaire car spotdl appelle yt-dlp en interne (pas en sous-process),
+    donc --cookies passé en CLI n'est pas transmis. Le fichier de config
+    est lu automatiquement par yt-dlp/spotdl."""
+    try:
+        config_dirs = [
+            os.path.expanduser("~/.yt-dlp/config.txt"),
+            os.path.expanduser("~/.config/yt-dlp/config.txt"),
+        ]
+        cookies_path = get_cookies_path()
+        if not cookies_path:
+            return False
+        
+        for config_path in config_dirs:
+            try:
+                os.makedirs(os.path.dirname(config_path), exist_ok=True)
+                with open(config_path, 'w', encoding='utf-8') as f:
+                    f.write(f"--cookies {cookies_path}\n")
+            except Exception:
+                continue
+        
+        # Aussi créer dans le dossier de travail courant (Render)
+        try:
+            with open("yt-dlp.conf", 'w', encoding='utf-8') as f:
+                f.write(f"--cookies {cookies_path}\n")
+        except Exception:
+            pass
+        
+        return True
+    except Exception as e:
+        print(f"[cookies] Erreur création config yt-dlp: {e}", flush=True)
         return False
 
 
@@ -345,6 +387,20 @@ def _download_spotdl_fallback(spotify_url, output_dir, timeout_per_provider=90):
     all_output = []
     downloaded_file = None
 
+    # Créer un fichier de config yt-dlp dans l'output_dir (spotdl exécute yt-dlp
+    # en interne, et le fichier de config local est lu automatiquement)
+    cookies_path = get_cookies_path()
+    if cookies_path:
+        try:
+            local_conf = os.path.join(output_dir, "yt-dlp.conf")
+            with open(local_conf, 'w', encoding='utf-8') as f:
+                f.write(f"--cookies {cookies_path}\n")
+            all_output.append(f"[config] yt-dlp config créé dans {local_conf}")
+            # Aussi s'assurer que la config globale existe
+            _ensure_ytdlp_config()
+        except Exception as e:
+            all_output.append(f"[config] Erreur création config: {e}")
+
     providers = SPOTDL_PROVIDERS + SPOTDL_LAST_RESORT_PROVIDERS
 
     for provider in providers:
@@ -359,6 +415,11 @@ def _download_spotdl_fallback(spotify_url, output_dir, timeout_per_provider=90):
             '--preload',
             '--log-level', 'DEBUG',
         ]
+
+        # Ajouter les cookies YouTube si disponibles (pour provider youtube/youtube-music)
+        if cookies_path:
+            # spotdl >= 4.5 supporte --cookie-file, et aussi --cookies
+            cmd += ['--cookie-file', cookies_path]
 
         effective_timeout = timeout_per_provider
         if provider in ("youtube", "youtube-music"):

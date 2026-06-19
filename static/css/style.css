@@ -664,6 +664,39 @@ h1 span { color: var(--gold); }
 .btn-download:hover { background: rgba(110,191,139,0.15); transform: translateY(-1px); }
 .btn-download svg { width: clamp(14px, 1.2vw, 18px); height: clamp(14px, 1.2vw, 18px); stroke: var(--green); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
 
+/* ── Maintenance overlay (Spotify désactivé) ── */
+.maintenance-overlay {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: clamp(32px, 5vw, 64px) clamp(16px, 2vw, 24px);
+  gap: 16px;
+}
+.maintenance-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: rgba(201,169,110,0.1);
+  animation: spin-cw 4s linear infinite;
+}
+.maintenance-overlay h2 {
+  font-family: 'Syne', sans-serif;
+  font-size: clamp(1.1rem, 1.8vw, 1.4rem);
+  color: var(--beige);
+  font-weight: 700;
+}
+.maintenance-overlay p {
+  font-size: clamp(0.8rem, 1vw, 0.9rem);
+  color: var(--text-muted);
+  max-width: 360px;
+  line-height: 1.5;
+}
+
 /* ── Footer ── */
 footer {
   margin-top: clamp(24px, 4vh, 40px);

@@ -22,6 +22,7 @@ import subprocess
 import threading
 import time
 import sys
+import base64
 
 import requests
 
@@ -41,7 +42,12 @@ _BOT_CHECK_MARKERS = (
     "sign in to confirm",
     "confirm you're not a bot",
     "http error 429",
+    "sign in",
+    "login required",
 )
+
+# Fichier de cookies persistant pour YouTube (dans le dossier upload)
+COOKIES_FILE = os.path.join(UPLOAD_FOLDER, ".youtube_cookies.txt")
 
 # Liste d'instances Piped fiables pour la recherche YouTube
 PIPED_INSTANCES = [
@@ -60,6 +66,64 @@ PIPED_INSTANCES = [
 
 def sanitize_filename(name):
     return re.sub(r'[<>:"/\\|?*]', '', name).strip()
+
+
+def init_cookies():
+    """
+    Charge les cookies depuis la variable d'environnement YOUTUBE_COOKIES
+    (contenu base64 d'un fichier cookies.txt au format Netscape)
+    ou depuis un fichier uploadé.
+    La priorité : fichier uploadé > variable d'environnement > rien.
+    """
+    # Si le fichier uploadé existe déjà, ne rien faire (il a priorité)
+    if os.path.exists(COOKIES_FILE):
+        return True
+
+    # Sinon, essayer la variable d'environnement
+    env_cookies = os.environ.get('YOUTUBE_COOKIES', '')
+    if env_cookies:
+        try:
+            decoded = base64.b64decode(env_cookies).decode('utf-8')
+            with open(COOKIES_FILE, 'w', encoding='utf-8') as f:
+                f.write(decoded)
+            return True
+        except Exception as e:
+            print(f"[cookies] Erreur décodage YOUTUBE_COOKIES: {e}", flush=True)
+
+    return bool(os.path.exists(COOKIES_FILE))
+
+
+def save_cookies_from_text(cookies_text):
+    """Sauvegarde le texte brut d'un fichier cookies.txt."""
+    try:
+        os.makedirs(os.path.dirname(COOKIES_FILE), exist_ok=True)
+        with open(COOKIES_FILE, 'w', encoding='utf-8') as f:
+            f.write(cookies_text)
+        return True
+    except Exception as e:
+        print(f"[cookies] Erreur sauvegarde: {e}", flush=True)
+        return False
+
+
+def clear_cookies():
+    """Supprime le fichier de cookies."""
+    try:
+        if os.path.exists(COOKIES_FILE):
+            os.remove(COOKIES_FILE)
+            return True
+    except Exception as e:
+        print(f"[cookies] Erreur suppression: {e}", flush=True)
+    return False
+
+
+def has_cookies():
+    """Vérifie si un fichier de cookies valide existe."""
+    return os.path.exists(COOKIES_FILE) and os.path.getsize(COOKIES_FILE) > 0
+
+
+def get_cookies_path():
+    """Retourne le chemin du fichier cookies s'il existe."""
+    return COOKIES_FILE if has_cookies() else ''
 
 
 def _check_dependencies():
@@ -231,22 +295,9 @@ def _download_ytdlp(query, output_dir, output_template, timeout=180, player_clie
     
     cmd.append(query)
 
-    cookies_path = os.environ.get('YOUTUBE_COOKIES_PATH', '')
-    if cookies_path and os.path.exists(cookies_path):
+    cookies_path = get_cookies_path()
+    if cookies_path:
         cmd += ['--cookies', cookies_path]
-    else:
-        # Tentative avec cookies-from-browser (chrome/edge/brave)
-        for browser in ('chrome', 'brave', 'edge', 'opera', 'chromium'):
-            try:
-                check = subprocess.run(
-                    ['yt-dlp', '--cookies-from-browser', browser, '--version'],
-                    capture_output=True, text=True, timeout=10
-                )
-                if check.returncode == 0:
-                    cmd += ['--cookies-from-browser', browser]
-                    break
-            except Exception:
-                continue
 
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)

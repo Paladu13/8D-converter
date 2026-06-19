@@ -12,7 +12,13 @@ from flask import request, jsonify, send_file, render_template
 from pydub.utils import which
 
 from .audio_processor import process_8d, process_batch, cleanup_old_files, UPLOAD_FOLDER
-from .spotify_downloader import process_spotify_download
+from .spotify_downloader import (
+    process_spotify_download,
+    save_cookies_from_text,
+    clear_cookies,
+    has_cookies,
+    init_cookies,
+)
 
 # Dictionnaires de progression partagés
 jobs = {}
@@ -233,10 +239,45 @@ def init_routes(app):
             mimetype="audio/mpeg"
         )
 
+    # ── Routes Cookies YouTube ──
+    @app.route('/cookies-status')
+    def cookies_status():
+        return jsonify({
+            'has_cookies': has_cookies()
+        })
+
+    @app.route('/cookies-upload', methods=['POST'])
+    def cookies_upload():
+        if 'cookies' not in request.files:
+            return jsonify({'error': 'Aucun fichier cookies fourni.'}), 400
+
+        file = request.files['cookies']
+        if file.filename == '':
+            return jsonify({'error': 'Nom de fichier vide.'}), 400
+
+        try:
+            content = file.read().decode('utf-8')
+            if not content.strip():
+                return jsonify({'error': 'Fichier cookies vide.'}), 400
+
+            if save_cookies_from_text(content):
+                return jsonify({'success': True, 'message': 'Cookies importés avec succès.'})
+            else:
+                return jsonify({'error': 'Erreur lors de la sauvegarde des cookies.'}), 500
+        except Exception as e:
+            return jsonify({'error': f'Erreur de lecture du fichier: {str(e)}'}), 400
+
+    @app.route('/cookies-delete', methods=['POST'])
+    def cookies_delete():
+        if clear_cookies():
+            return jsonify({'success': True, 'message': 'Cookies supprimés.'})
+        return jsonify({'error': 'Aucun cookie à supprimer.'}), 404
+
     @app.route('/health')
     def health():
         ffmpeg_ok = which("ffmpeg") is not None
         return jsonify({
             'status': 'ok',
-            'ffmpeg_installed': ffmpeg_ok
+            'ffmpeg_installed': ffmpeg_ok,
+            'cookies_configured': has_cookies()
         })

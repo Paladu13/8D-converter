@@ -291,6 +291,136 @@ h1 span { color: var(--gold); }
   text-align: center;
 }
 
+/* ── Cookies YouTube section ── */
+.cookies-section {
+  margin-bottom: 18px;
+  border: 1px solid rgba(201,169,110,0.15);
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(255,255,255,0.02);
+}
+.cookies-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: clamp(10px, 1.2vw, 14px) clamp(12px, 1.5vw, 16px);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+  color: var(--beige);
+  font-size: clamp(0.78rem, 0.95vw, 0.88rem);
+  font-weight: 600;
+}
+.cookies-header:hover { background: rgba(255,255,255,0.03); }
+.cookies-header svg { flex-shrink: 0; }
+.cookies-header span { flex: 1; display: flex; align-items: center; gap: 6px; }
+.cookies-badge {
+  font-size: clamp(0.65rem, 0.8vw, 0.75rem);
+  color: var(--text-muted);
+  font-weight: 400;
+  background: rgba(255,255,255,0.05);
+  padding: 2px 8px;
+  border-radius: 20px;
+}
+.cookies-toggle {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.75rem;
+  padding: 2px 6px;
+  line-height: 1;
+}
+.cookies-body {
+  display: none;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 clamp(12px, 1.5vw, 16px) clamp(12px, 1.5vw, 16px);
+  border-top: 1px solid rgba(201,169,110,0.08);
+  padding-top: 12px;
+}
+.cookies-body.visible { display: flex; }
+.cookies-desc {
+  font-size: clamp(0.72rem, 0.85vw, 0.82rem);
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin: 0;
+}
+.cookies-desc strong { color: var(--gold-dim); }
+.cookies-upload-area {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.cookies-upload-area input[type="file"] {
+  font-size: clamp(0.7rem, 0.8vw, 0.78rem);
+  color: var(--text-muted);
+  flex: 1;
+  min-width: 140px;
+}
+.btn-cookies-upload, .btn-cookies-delete {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: clamp(6px, 0.7vw, 10px) clamp(10px, 1vw, 14px);
+  border-radius: 8px;
+  font-size: clamp(0.7rem, 0.8vw, 0.78rem);
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+  border: none;
+  font-family: 'Inter', sans-serif;
+  white-space: nowrap;
+}
+.btn-cookies-upload {
+  background: var(--gold);
+  color: #1A1A2E;
+}
+.btn-cookies-upload:disabled { opacity: 0.35; cursor: not-allowed; }
+.btn-cookies-upload:not(:disabled):hover { opacity: 0.85; }
+.btn-cookies-delete {
+  background: rgba(191,110,110,0.15);
+  color: var(--red);
+  border: 1px solid rgba(191,110,110,0.2);
+}
+.btn-cookies-delete:hover { background: rgba(191,110,110,0.25); }
+.cookies-status-msg {
+  display: none;
+  font-size: clamp(0.7rem, 0.8vw, 0.78rem);
+  padding: 6px 10px;
+  border-radius: 6px;
+}
+.cookies-status-msg.visible { display: block; }
+.cookies-status-msg.success { color: var(--green); background: rgba(110,191,139,0.08); }
+.cookies-status-msg.error { color: var(--red); background: rgba(191,110,110,0.08); }
+.cookies-help {
+  font-size: clamp(0.68rem, 0.8vw, 0.78rem);
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+.cookies-help summary {
+  cursor: pointer;
+  color: var(--gold-dim);
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+.cookies-help ol {
+  margin: 4px 0;
+  padding-left: 20px;
+}
+.cookies-help a {
+  color: var(--gold);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.cookies-help code {
+  background: rgba(255,255,255,0.06);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 0.85em;
+}
+
 /* ── Spotify input area (onglet 2) ── */
 .spotify-input-area {
   display: flex;

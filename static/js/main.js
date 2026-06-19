@@ -1,4 +1,98 @@
 // ────────────────────────────────────────────────────────────
+// COOKIES YouTube
+// ────────────────────────────────────────────────────────────
+const cookiesHeader = document.getElementById('cookiesHeader');
+const cookiesBody = document.getElementById('cookiesBody');
+const cookiesToggle = document.getElementById('cookiesToggle');
+const cookiesBadge = document.getElementById('cookiesBadge');
+const cookiesFileInput = document.getElementById('cookiesFileInput');
+const cookiesUploadBtn = document.getElementById('cookiesUploadBtn');
+const cookiesDeleteBtn = document.getElementById('cookiesDeleteBtn');
+const cookiesStatusMsg = document.getElementById('cookiesStatusMsg');
+
+// Toggle cookie section
+cookiesHeader.addEventListener('click', () => {
+  cookiesBody.classList.toggle('visible');
+  cookiesToggle.textContent = cookiesBody.classList.contains('visible') ? '▲' : '▼';
+});
+
+// Enable upload button when file selected
+cookiesFileInput.addEventListener('change', () => {
+  cookiesUploadBtn.disabled = !cookiesFileInput.files.length;
+});
+
+// Upload cookies
+cookiesUploadBtn.addEventListener('click', async () => {
+  if (!cookiesFileInput.files.length) return;
+
+  const formData = new FormData();
+  formData.append('cookies', cookiesFileInput.files[0]);
+
+  cookiesUploadBtn.disabled = true;
+  cookiesUploadBtn.textContent = 'Importation…';
+  cookiesStatusMsg.className = 'cookies-status-msg';
+
+  try {
+    const res = await fetch('/cookies-upload', { method: 'POST', body: formData });
+    const data = await res.json();
+
+    if (data.success) {
+      cookiesStatusMsg.className = 'cookies-status-msg success visible';
+      cookiesStatusMsg.textContent = '✅ Cookies importés avec succès !';
+      cookiesBadge.textContent = '✅ configurés';
+      cookiesFileInput.value = '';
+    } else {
+      cookiesStatusMsg.className = 'cookies-status-msg error visible';
+      cookiesStatusMsg.textContent = '❌ ' + (data.error || 'Erreur inconnue');
+    }
+  } catch (err) {
+    cookiesStatusMsg.className = 'cookies-status-msg error visible';
+    cookiesStatusMsg.textContent = '❌ Erreur réseau : ' + err.message;
+  }
+
+  cookiesUploadBtn.disabled = false;
+  cookiesUploadBtn.innerHTML = `<svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Importer les cookies`;
+});
+
+// Delete cookies
+cookiesDeleteBtn.addEventListener('click', async () => {
+  cookiesDeleteBtn.disabled = true;
+  cookiesStatusMsg.className = 'cookies-status-msg';
+
+  try {
+    const res = await fetch('/cookies-delete', { method: 'POST' });
+    const data = await res.json();
+
+    if (data.success) {
+      cookiesStatusMsg.className = 'cookies-status-msg success visible';
+      cookiesStatusMsg.textContent = '🗑️ Cookies supprimés.';
+      cookiesBadge.textContent = '❌ non configurés';
+    } else {
+      cookiesStatusMsg.className = 'cookies-status-msg error visible';
+      cookiesStatusMsg.textContent = '❌ ' + (data.error || 'Erreur inconnue');
+    }
+  } catch (err) {
+    cookiesStatusMsg.className = 'cookies-status-msg error visible';
+    cookiesStatusMsg.textContent = '❌ Erreur réseau : ' + err.message;
+  }
+
+  cookiesDeleteBtn.disabled = false;
+});
+
+// Check cookie status on page load
+async function checkCookiesStatus() {
+  try {
+    const res = await fetch('/cookies-status');
+    const data = await res.json();
+    if (data.has_cookies) {
+      cookiesBadge.textContent = '✅ configurés';
+    }
+  } catch (_) {}
+}
+
+checkCookiesStatus();
+
+// ────────────────────────────────────────────────────────────
 // TAB SYSTEM
 // ────────────────────────────────────────────────────────────
 const tabBtns = document.querySelectorAll('.tab-btn');

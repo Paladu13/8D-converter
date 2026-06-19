@@ -7,3 +7,8 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.0"
+      # Optionnel : cookies YouTube en base64 (cookies.txt format Netscape)
+      # Générez avec : cat cookies.txt | base64 | pbcopy
+      # - key: YOUTUBE_COOKIES
+      #   value: "<votre-base64-ici>"
+      # Alternative : uploader le fichier cookies.txt via l'interface web

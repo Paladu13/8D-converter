@@ -18,6 +18,10 @@ if ffmpeg_path:
 if ffprobe_path:
     AudioSegment.ffprobe = ffprobe_path
 
+# ── Cookies YouTube (depuis env var ou upload) ──
+from src.spotify_downloader import init_cookies
+init_cookies()
+
 # ── Application Flask ──
 from flask import Flask
 from src.routes import init_routes
